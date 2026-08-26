@@ -140,6 +140,82 @@ class IdentityProtocolTests(unittest.TestCase):
 
 
 class IdentityPersistenceTests(unittest.TestCase):
+    def test_create_identity_stays_anchored_when_parent_path_is_replaced(self) -> None:
+        seed = bytes(range(32))
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            parent = root / "private"
+            parent.mkdir(mode=0o700)
+            displaced_parent = root / "original-private"
+            key_path = parent / "identity.key"
+            real_open = os.open
+            replaced = False
+
+            def replace_after_parent_open(path: object, *args: object, **kwargs: object) -> int:
+                nonlocal replaced
+                descriptor = real_open(path, *args, **kwargs)  # type: ignore[arg-type]
+                if not replaced and path == parent:
+                    replaced = True
+                    parent.rename(displaced_parent)
+                    parent.mkdir(mode=0o700)
+                return descriptor
+
+            with (
+                mock.patch("technocore_sentinel.identity.os.open", side_effect=replace_after_parent_open),
+                mock.patch(
+                    "technocore_sentinel.identity.secrets.token_bytes", return_value=seed
+                ),
+            ):
+                self.assertEqual(create_identity(key_path), seed)
+
+            self.assertTrue(replaced)
+            self.assertEqual((displaced_parent / key_path.name).read_bytes(), seed)
+            self.assertFalse((parent / key_path.name).exists())
+
+    def test_load_identity_stays_anchored_when_parent_path_is_replaced(self) -> None:
+        original_seed = bytes(range(32))
+        replacement_seed = bytes(reversed(range(32)))
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            root = Path(temporary_directory)
+            parent = root / "private"
+            parent.mkdir(mode=0o700)
+            key_path = parent / "identity.key"
+            key_path.write_bytes(original_seed)
+            key_path.chmod(0o600)
+            displaced_parent = root / "original-private"
+            real_open = os.open
+            replaced = False
+
+            def replace_after_parent_open(path: object, *args: object, **kwargs: object) -> int:
+                nonlocal replaced
+                descriptor = real_open(path, *args, **kwargs)  # type: ignore[arg-type]
+                if not replaced and path == parent:
+                    replaced = True
+                    parent.rename(displaced_parent)
+                    parent.mkdir(mode=0o700)
+                    replacement = parent / key_path.name
+                    replacement.write_bytes(replacement_seed)
+                    replacement.chmod(0o600)
+                return descriptor
+
+            with mock.patch(
+                "technocore_sentinel.identity.os.open", side_effect=replace_after_parent_open
+            ):
+                self.assertEqual(load_identity(key_path), original_seed)
+
+            self.assertTrue(replaced)
+            self.assertEqual((parent / key_path.name).read_bytes(), replacement_seed)
+
+    def test_identity_paths_reject_empty_dot_and_dot_dot_basenames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            invalid_paths = ("", ".", "..", f"{temporary_directory}/")
+            for invalid_path in invalid_paths:
+                with self.subTest(path=invalid_path):
+                    with self.assertRaises(ValueError):
+                        create_identity(invalid_path)
+                    with self.assertRaises(ValueError):
+                        load_identity(invalid_path)
+
     def test_create_identity_uses_deterministic_mock_and_restrictive_modes(self) -> None:
         seed = bytes(range(32))
         with tempfile.TemporaryDirectory() as temporary_directory:

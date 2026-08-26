@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 from dataclasses import dataclass
+import errno
 import hashlib
 import os
 from pathlib import Path
@@ -135,7 +136,18 @@ def profile_location(did: str) -> tuple[str, str, str, str]:
     return fingerprint, namespace, key, f"/kv/{namespace}/{key}"
 
 
-def _validate_parent(parent: Path, *, create: bool) -> None:
+def _key_location(path: str | os.PathLike[str]) -> tuple[Path, str]:
+    raw_path = os.fspath(path)
+    if not isinstance(raw_path, str):
+        raise TypeError("identity path must be text")
+    name = os.path.basename(raw_path)
+    if name in {"", ".", ".."}:
+        raise ValueError("identity path must have a file basename")
+    parent_text = os.path.dirname(raw_path) or "."
+    return Path(parent_text), name
+
+
+def _open_parent(parent: Path, *, create: bool) -> int:
     if create:
         try:
             parent.mkdir(mode=0o700, parents=True)
@@ -143,13 +155,34 @@ def _validate_parent(parent: Path, *, create: bool) -> None:
             pass
 
     try:
-        parent_status = parent.lstat()
+        descriptor = os.open(
+            parent,
+            _open_flags(os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)),
+        )
     except FileNotFoundError:
         raise ValueError("identity parent directory does not exist") from None
-    if stat.S_ISLNK(parent_status.st_mode) or not stat.S_ISDIR(parent_status.st_mode):
-        raise ValueError("identity parent must be a real directory")
-    if stat.S_IMODE(parent_status.st_mode) & 0o077:
-        raise ValueError("identity parent has group or other permissions")
+    except OSError as error:
+        if error.errno in {errno.ELOOP, errno.ENOTDIR}:
+            raise ValueError("identity parent must be a real directory") from error
+        raise
+
+    try:
+        parent_status = os.fstat(descriptor)
+        if not stat.S_ISDIR(parent_status.st_mode):
+            raise ValueError("identity parent must be a real directory")
+        if stat.S_IMODE(parent_status.st_mode) & 0o077:
+            raise ValueError("identity parent has group or other permissions")
+        get_effective_uid = getattr(os, "geteuid", None)
+        if (
+            callable(get_effective_uid)
+            and hasattr(parent_status, "st_uid")
+            and parent_status.st_uid != get_effective_uid()
+        ):
+            raise ValueError("identity parent is not owned by the effective user")
+    except Exception:
+        os.close(descriptor)
+        raise
+    return descriptor
 
 
 def _open_flags(base: int) -> int:
@@ -159,24 +192,17 @@ def _open_flags(base: int) -> int:
 def create_identity(path: str | os.PathLike[str]) -> bytes:
     """Create one isolated seed file exclusively with restrictive permissions."""
 
-    key_path = Path(path)
-    _validate_parent(key_path.parent, create=True)
-
-    try:
-        existing = key_path.lstat()
-    except FileNotFoundError:
-        existing = None
-    if existing is not None:
-        raise FileExistsError(f"identity path already exists: {key_path}")
-
-    seed = secrets.token_bytes(32)
+    parent, name = _key_location(path)
+    parent_descriptor = _open_parent(parent, create=True)
     descriptor: int | None = None
     created = False
     try:
+        seed = secrets.token_bytes(32)
         descriptor = os.open(
-            key_path,
+            name,
             _open_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
             0o600,
+            dir_fd=parent_descriptor,
         )
         created = True
         opened_status = os.fstat(descriptor)
@@ -199,13 +225,14 @@ def create_identity(path: str | os.PathLike[str]) -> bytes:
             descriptor = None
         if created:
             try:
-                key_path.unlink()
+                os.unlink(name, dir_fd=parent_descriptor)
             except FileNotFoundError:
                 pass
         raise
     finally:
         if descriptor is not None:
             os.close(descriptor)
+        os.close(parent_descriptor)
 
     return seed
 
@@ -213,13 +240,18 @@ def create_identity(path: str | os.PathLike[str]) -> bytes:
 def load_identity(path: str | os.PathLike[str]) -> bytes:
     """Load a seed only from a secure, non-symlink regular file."""
 
-    key_path = Path(path)
-    _validate_parent(key_path.parent, create=False)
+    parent, name = _key_location(path)
+    parent_descriptor = _open_parent(parent, create=False)
 
     try:
-        descriptor = os.open(key_path, _open_flags(os.O_RDONLY))
+        descriptor = os.open(
+            name,
+            _open_flags(os.O_RDONLY),
+            dir_fd=parent_descriptor,
+        )
     except OSError as error:
-        if key_path.is_symlink():
+        os.close(parent_descriptor)
+        if error.errno == errno.ELOOP:
             raise ValueError("identity path must not be a symlink") from error
         raise
 
@@ -243,6 +275,7 @@ def load_identity(path: str | os.PathLike[str]) -> bytes:
         return _validate_seed(b"".join(chunks))
     finally:
         os.close(descriptor)
+        os.close(parent_descriptor)
 
 
 def next_nonce(previous: str | None = None) -> str:
