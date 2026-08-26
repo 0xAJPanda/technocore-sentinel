@@ -18,6 +18,7 @@ from technocore_sentinel.identity import derive_did_key, sign_message
 class FakeClient:
     def __init__(self) -> None:
         self.posts = 0
+        self.prior_last_seq: int | None = None
 
     def scan_room(self, room: str, *, limit: int) -> dict[str, object]:
         return {
@@ -37,6 +38,7 @@ class FakeClient:
 
     def post_signed_message(self, room: str, signed: object, authorization: object, *, prior_last_seq: int) -> MessageReceipt:
         self.posts += 1
+        self.prior_last_seq = prior_last_seq
         return MessageReceipt(signed.did, room, 5, "2026-01-01T00:00:00Z", signed.nonce, signed.text)  # type: ignore[attr-defined]
 
 
@@ -122,6 +124,52 @@ class CLITests(unittest.TestCase):
             )
             self.assertNotIn("sig", receipt.read_text())
             self.assertNotIn("signature", output.getvalue())
+
+    def test_introduction_boundary_includes_all_message_sequence_evidence(self) -> None:
+        class InconsistentClient(FakeClient):
+            def get_room(self, room: str, *, limit: int) -> dict[str, object]:
+                return {
+                    "room": room,
+                    "last_seq": 0,
+                    "messages": [{"seq": 100, "from": "x", "text": "old"}],
+                }
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            key = self.key(root)
+            fake = InconsistentClient()
+            run(
+                [
+                    "introduce", "--key-file", str(key),
+                    "--nonce-file", str(root / "nonce.json"),
+                    "--receipt-file", str(root / "receipt.json"),
+                    "--text", "hello", "--submit",
+                ],
+                client_factory=lambda: fake,  # type: ignore[arg-type]
+                stdout=StringIO(),
+            )
+            self.assertEqual(fake.prior_last_seq, 100)
+
+    def test_introduction_boundary_rejects_invalid_message_sequences(self) -> None:
+        class InvalidSequenceClient(FakeClient):
+            def get_room(self, room: str, *, limit: int) -> dict[str, object]:
+                return {"room": room, "last_seq": 10, "messages": [{"seq": True}]}
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fake = InvalidSequenceClient()
+            with self.assertRaises(ValueError):
+                run(
+                    [
+                        "introduce", "--key-file", str(self.key(root)),
+                        "--nonce-file", str(root / "nonce.json"),
+                        "--receipt-file", str(root / "receipt.json"),
+                        "--text", "hello", "--submit",
+                    ],
+                    client_factory=lambda: fake,  # type: ignore[arg-type]
+                    stdout=StringIO(),
+                )
+            self.assertEqual(fake.posts, 0)
 
     def test_scan_text_and_json_render_use_get_digest(self) -> None:
         fake = FakeClient()

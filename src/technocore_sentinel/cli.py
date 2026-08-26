@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Mapping
 import hashlib
 import json
 import os
@@ -224,18 +225,21 @@ def run(
 
     client = client_factory()
     before = client.get_room(args.room, limit=1)
+    messages = before.get("messages")
+    if not isinstance(messages, list):
+        raise ValueError("room messages must be a list")
+    sequence_evidence = [0]
+    for index, message in enumerate(messages):
+        if not isinstance(message, Mapping):
+            raise ValueError(f"message {index} must be a mapping")
+        seq = message.get("seq")
+        if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
+            raise ValueError(f"message {index} seq must be a non-negative integer")
+        sequence_evidence.append(seq)
     last_seq = before.get("last_seq")
-    if last_seq is None:
-        messages = before["messages"]
-        assert isinstance(messages, list)
-        prior_last_seq = max((item["seq"] for item in messages), default=0)
-    elif isinstance(last_seq, int) and not isinstance(last_seq, bool):
-        prior_last_seq = last_seq
-    else:
-        # Normal room JSON exposes sequence through messages; keep this strict.
-        messages = before["messages"]
-        assert isinstance(messages, list)
-        prior_last_seq = max((item["seq"] for item in messages), default=0)
+    if isinstance(last_seq, int) and not isinstance(last_seq, bool) and last_seq >= 0:
+        sequence_evidence.append(last_seq)
+    prior_last_seq = max(sequence_evidence)
     receipt = client.post_signed_message(
         args.room,
         signed,

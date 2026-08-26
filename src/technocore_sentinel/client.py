@@ -23,6 +23,7 @@ DEFAULT_TIMEOUT = 20.0
 MAX_RESPONSE_BYTES = 1024 * 1024
 USER_AGENT = "technocore-sentinel/0.1.0"
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$", re.ASCII)
+_MAX_LIVE_NONCE = 9_999_999_999_999_999_999
 
 
 class ClientError(RuntimeError):
@@ -241,12 +242,17 @@ class TechnocoreClient:
         expected = sweep_text(value if value is not None else self.default_profile_value(did), NOTE_MAX_LENGTH)
         _, namespace, key, path = profile_location(did)
         try:
-            self._request(
-                "POST",
-                path,
-                {"format": "json"},
-                {"value": expected, "if_absent": True},
+            response = self._json_mapping(
+                self._request(
+                    "POST",
+                    path,
+                    {"format": "json"},
+                    {"value": expected, "if_absent": True},
+                ),
+                "profile",
             )
+            if set(response) != {"stored"} or response["stored"] is not True:
+                raise ClientError("profile response did not confirm exactly stored=true")
             created = True
         except HTTPStatusError as error:
             if error.status != 409:
@@ -291,8 +297,11 @@ class TechnocoreClient:
             for message in messages
             if isinstance(message, Mapping)
             and message.get("from") == signed.did
-            and message.get("nonce") == signed.nonce
             and message.get("text") == signed.text
+            and isinstance(message.get("nonce"), int)
+            and not isinstance(message.get("nonce"), bool)
+            and 1 <= message["nonce"] <= _MAX_LIVE_NONCE
+            and str(message["nonce"]) == signed.nonce
         ]
         if len(matches) != 1:
             raise ClientError("signed message exact readback verification failed")

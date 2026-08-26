@@ -183,6 +183,22 @@ class ClientWriteTests(unittest.TestCase):
         self.assertEqual(get.get_method(), "GET")  # type: ignore[attr-defined]
         self.assertTrue(receipt.created)
 
+    def test_profile_success_requires_exact_stored_acknowledgement(self) -> None:
+        invalid_responses = (
+            b'{"stored":false}',
+            b'{}',
+            b'{"stored":true,"extra":true}',
+            b'[]',
+            b'not-json',
+        )
+        for response in invalid_responses:
+            opener = QueueOpener([response])
+            with self.subTest(response=response), self.assertRaises(ClientError):
+                TechnocoreClient(opener=opener).publish_profile(
+                    self.did, "profile", SubmitAuthorization("publish-profile")
+                )
+            self.assertEqual(len(opener.requests), 1)
+
     def test_profile_409_equal_is_idempotent_but_difference_aborts(self) -> None:
         url = f"https://technocore.chat{self.path}?format=json"
         conflict = HTTPError(url, 409, "Conflict", {}, BytesIO(b"conflict"))
@@ -207,7 +223,7 @@ class ClientWriteTests(unittest.TestCase):
 
     def test_signed_post_body_and_exact_get_verification(self) -> None:
         signed = sign_message(self.seed, "lobby", "123", "hello")
-        verified = room([{"seq": 8, "from": signed.did, "nonce": "123", "text": "hello", "ts": "now"}])
+        verified = room([{"seq": 8, "from": signed.did, "nonce": 123, "text": "hello", "ts": "now"}])
         opener = QueueOpener([b'{"posted":true}', verified])
         receipt = TechnocoreClient(opener=opener).post_signed_message(
             "lobby", signed, SubmitAuthorization("introduce"), prior_last_seq=7
@@ -232,11 +248,36 @@ class ClientWriteTests(unittest.TestCase):
     def test_signed_readback_sequence_must_advance(self) -> None:
         signed = sign_message(self.seed, "lobby", "123", "hello")
         for seq in (True, 7):
-            verified = room([{"seq": seq, "from": signed.did, "nonce": "123", "text": "hello"}])
+            verified = room([{"seq": seq, "from": signed.did, "nonce": 123, "text": "hello"}])
             with self.subTest(seq=seq), self.assertRaises(ClientError):
                 TechnocoreClient(opener=QueueOpener([b'{"posted":true}', verified])).post_signed_message(
                     "lobby", signed, SubmitAuthorization("introduce"), prior_last_seq=7
                 )
+
+    def test_signed_readback_nonce_must_be_bounded_integer_and_canonical(self) -> None:
+        invalid_cases = (
+            ("123", 0),
+            (True, 0),
+            (0, 0),
+            (10_000_000_000_000_000_000, 0),
+            (123.0, 0),
+        )
+        signed = sign_message(self.seed, "lobby", "123", "hello")
+        for readback_nonce, prior_last_seq in invalid_cases:
+            verified = room(
+                [{"seq": prior_last_seq + 1, "from": signed.did, "nonce": readback_nonce, "text": "hello"}]
+            )
+            with self.subTest(readback_nonce=readback_nonce), self.assertRaises(ClientError):
+                TechnocoreClient(opener=QueueOpener([b'{"posted":true}', verified])).post_signed_message(
+                    "lobby", signed, SubmitAuthorization("introduce"), prior_last_seq=prior_last_seq
+                )
+
+        noncanonical = sign_message(self.seed, "lobby", "00123", "hello")
+        verified = room([{"seq": 1, "from": noncanonical.did, "nonce": 123, "text": "hello"}])
+        with self.assertRaises(ClientError):
+            TechnocoreClient(opener=QueueOpener([b'{"posted":true}', verified])).post_signed_message(
+                "lobby", noncanonical, SubmitAuthorization("introduce"), prior_last_seq=0
+            )
 
     def test_http_200_is_not_enough_for_signed_post(self) -> None:
         signed = sign_message(self.seed, "lobby", "123", "hello")
