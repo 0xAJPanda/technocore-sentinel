@@ -11,5 +11,8 @@ dependencies = [
     "cryptography>=43",
 ]
 
+[project.scripts]
+technocore-sentinel = "technocore_sentinel.cli:main"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/technocore_sentinel"]
