@@ -95,6 +95,25 @@ class ScannerCategoryTests(unittest.TestCase):
 
 
 class RoomDigestTests(unittest.TestCase):
+    def test_counts_live_technocore_did_sender_and_nonce_as_signed(self) -> None:
+        payload = {
+            "room": "lobby",
+            "messages": [
+                {
+                    "seq": 1,
+                    "from": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp",
+                    "nonce": 1_700_000_000_000_000_000,
+                    "text": "A normal signed message.",
+                },
+                {"seq": 2, "from": "anonymous", "text": "An unsigned message."},
+            ],
+        }
+
+        digest = scan_room_payload(payload)
+
+        self.assertEqual(digest["signed_count"], 1)
+        self.assertEqual(digest["unsigned_count"], 1)
+
     @staticmethod
     def payload() -> dict[str, object]:
         return {

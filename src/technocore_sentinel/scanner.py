@@ -224,7 +224,17 @@ def _is_signed(message: Mapping[str, object]) -> bool:
     explicit = message.get("signed")
     if explicit is True:
         return True
-    return any(isinstance(message.get(field), str) and bool(message[field]) for field in ("signature", "sig"))
+    if any(isinstance(message.get(field), str) and bool(message[field]) for field in ("signature", "sig")):
+        return True
+    sender = message.get("from")
+    nonce = message.get("nonce")
+    return (
+        isinstance(sender, str)
+        and sender.startswith("did:key:z6Mk")
+        and isinstance(nonce, int)
+        and not isinstance(nonce, bool)
+        and nonce >= 0
+    )
 
 
 def scan_room_payload(payload: object) -> dict[str, object]:
