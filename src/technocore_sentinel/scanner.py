@@ -22,6 +22,7 @@ class ScanCategory(str, Enum):
     PROMPT_INJECTION = "prompt_injection"
     COMMAND_EXECUTION = "command_execution"
     WALLET_SECRET_SOLICITATION = "wallet_secret_solicitation"
+    IMPERSONATION = "impersonation"
     SUSPICIOUS_URL = "suspicious_url"
     REPETITIVE_FARMING = "repetitive_farming"
 
@@ -46,6 +47,7 @@ class Finding:
 
 _URL_RE = re.compile(r"\bhttps?://[^\s<>\"'`]+", re.IGNORECASE)
 _WORD_RE = re.compile(r"[\w'-]+", re.UNICODE)
+_SENTENCE_RE = re.compile(r"[^.!?\r\n]+(?:[.!?]+|$)")
 
 _IGNORE_INSTRUCTIONS_RE = re.compile(
     r"\b(?:ignore|disregard|forget|bypass|override)\b.{0,48}"
@@ -95,6 +97,25 @@ _PROTECTIVE_SECRET_RE = re.compile(
 _WALLET_ACTION_RE = re.compile(
     r"\b(?:connect|link|sync|verify)\s+(?:your\s+)?wallet\b|"
     r"\bsign\s+(?:this\s+|the\s+|a\s+)?transaction\b",
+    re.IGNORECASE,
+)
+_PROTECTIVE_WALLET_RE = re.compile(
+    r"\b(?:never|do not|don't|should not|shouldn't)\b.{0,48}"
+    r"(?:\b(?:connect|link|sync|verify)\s+(?:your\s+)?wallet\b|"
+    r"\bsign\s+(?:this\s+|the\s+|a\s+)?transaction\b)",
+    re.IGNORECASE,
+)
+
+_CLAIMED_OFFICIAL_IDENTITY_RE = re.compile(
+    r"\b(?:i am|i'm|this is|we are|speaking as)\b.{0,40}"
+    r"\b(?:official|admin(?:istrator)?|moderator|support|staff|representative)\b",
+    re.IGNORECASE,
+)
+_IDENTITY_TRUST_CUE_RE = re.compile(
+    r"\b(?:trust me|you can trust|verified|legitimate|authentic|"
+    r"contact me|message me|direct message|dm me|reach me|reply privately|"
+    r"new account|backup account|alternate account|temporary account|"
+    r"switched accounts|lost access|account (?:was )?hacked)\b",
     re.IGNORECASE,
 )
 
@@ -180,6 +201,7 @@ def scan_text(text: str) -> tuple[Finding, ...]:
 
     excerpt = _excerpt(text)
     findings: list[Finding] = []
+    sentences = tuple(match.group(0) for match in _SENTENCE_RE.finditer(text))
 
     if _IGNORE_INSTRUCTIONS_RE.search(text):
         findings.append(Finding(ScanCategory.PROMPT_INJECTION, Severity.HIGH, "ignore prior instructions", excerpt))
@@ -193,14 +215,31 @@ def scan_text(text: str) -> tuple[Finding, ...]:
     elif _IMPERATIVE_RE.search(text) and _COMMAND_TOOL_RE.search(text):
         findings.append(Finding(ScanCategory.COMMAND_EXECUTION, Severity.HIGH, "imperative shell command with executable tool", excerpt))
 
-    wallet_action = _WALLET_ACTION_RE.search(text)
-    secret = _SECRET_RE.search(text)
-    solicitation = _SOLICIT_RE.search(text)
-    protective = _PROTECTIVE_SECRET_RE.search(text)
-    if wallet_action:
+    wallet_request = any(
+        _WALLET_ACTION_RE.search(sentence)
+        and not _PROTECTIVE_WALLET_RE.search(sentence)
+        for sentence in sentences
+    )
+    secret_request = any(
+        _SECRET_RE.search(sentence)
+        and _SOLICIT_RE.search(sentence)
+        and not _PROTECTIVE_SECRET_RE.search(sentence)
+        for sentence in sentences
+    )
+    if wallet_request:
         findings.append(Finding(ScanCategory.WALLET_SECRET_SOLICITATION, Severity.HIGH, "wallet connection or transaction-signing request", excerpt))
-    elif secret and solicitation and not protective:
+    elif secret_request:
         findings.append(Finding(ScanCategory.WALLET_SECRET_SOLICITATION, Severity.HIGH, "secret credential solicitation", excerpt))
+
+    if _CLAIMED_OFFICIAL_IDENTITY_RE.search(text) and _IDENTITY_TRUST_CUE_RE.search(text):
+        findings.append(
+            Finding(
+                ScanCategory.IMPERSONATION,
+                Severity.MEDIUM,
+                "heuristic: claimed official/admin identity paired with trust, contact, or account-switch cue",
+                excerpt,
+            )
+        )
 
     urls = _URL_RE.findall(text)
     if urls:

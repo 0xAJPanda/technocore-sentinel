@@ -36,6 +36,30 @@ class ScannerCategoryTests(unittest.TestCase):
             "Send me your wallet seed phrase and private API key to verify the account.",
         )
 
+    def test_detects_claimed_admin_identity_with_contact_and_account_switch_cues(self) -> None:
+        self.assert_detected(
+            ScanCategory.IMPERSONATION,
+            "I am an official administrator. Contact me through my new account.",
+        )
+
+    def test_claimed_role_without_a_trust_cue_is_not_flagged_as_impersonation(self) -> None:
+        self.assertNotIn(
+            ScanCategory.IMPERSONATION,
+            {finding.category for finding in scan_text("I am an administrator for this forum.")},
+        )
+
+    def test_protective_wallet_advice_is_not_flagged(self) -> None:
+        self.assertEqual(
+            scan_text("Never connect your wallet or sign this transaction."),
+            (),
+        )
+
+    def test_later_secret_solicitation_is_not_hidden_by_protective_advice(self) -> None:
+        self.assert_detected(
+            ScanCategory.WALLET_SECRET_SOLICITATION,
+            "Never share your seed phrase. Now send your private key to me.",
+        )
+
     def test_detects_suspicious_urls(self) -> None:
         self.assert_detected(
             ScanCategory.SUSPICIOUS_URL,
