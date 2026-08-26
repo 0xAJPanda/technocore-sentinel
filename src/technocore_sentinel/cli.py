@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
+import fcntl
 import hashlib
 import json
 import os
@@ -38,19 +40,73 @@ def _public_identity(seed: bytes) -> dict[str, str]:
     return {"did": did, "profile_path": profile_location(did)[3]}
 
 
-def _secure_write_json(path: str | os.PathLike[str], value: dict[str, object]) -> None:
-    parent, name = _key_location(path)
-    parent_descriptor = _open_parent(parent, create=True)
+_STATE_LOCK = ".introduce.lock"
+_STATE_JOURNAL = ".introduce.journal"
+_MAX_STATE_BYTES = 16 * 1024
+
+
+def _validate_state_file(descriptor: int, label: str) -> None:
+    status = os.fstat(descriptor)
+    if not stat.S_ISREG(status.st_mode) or stat.S_IMODE(status.st_mode) & 0o077:
+        raise ValueError(f"{label} must be a secure regular file")
+
+
+def _read_json_at(parent_descriptor: int, name: str, label: str) -> dict[str, object] | None:
+    try:
+        descriptor = os.open(name, _open_flags(os.O_RDONLY), dir_fd=parent_descriptor)
+    except FileNotFoundError:
+        return None
+    except OSError as error:
+        if error.errno == getattr(os, "ELOOP", 40):
+            raise ValueError(f"{label} must not be a symlink") from error
+        raise
+    try:
+        _validate_state_file(descriptor, label)
+        data = os.read(descriptor, _MAX_STATE_BYTES + 1)
+        if len(data) > _MAX_STATE_BYTES:
+            raise ValueError(f"invalid {label}")
+        try:
+            payload = json.loads(data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            raise ValueError(f"invalid {label}") from error
+    finally:
+        os.close(descriptor)
+    if not isinstance(payload, dict):
+        raise ValueError(f"invalid {label}")
+    return payload
+
+
+def _check_target_at(parent_descriptor: int, name: str, label: str) -> None:
+    """Reject existing symlink, special, or over-permissive targets."""
+    try:
+        descriptor = os.open(name, _open_flags(os.O_RDONLY), dir_fd=parent_descriptor)
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        if error.errno == getattr(os, "ELOOP", 40):
+            raise ValueError(f"{label} must not be a symlink") from error
+        raise
+    try:
+        _validate_state_file(descriptor, label)
+    finally:
+        os.close(descriptor)
+
+
+def _write_json_at(parent_descriptor: int, name: str, value: dict[str, object], label: str) -> None:
     data = (json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    if len(data) > _MAX_STATE_BYTES:
+        raise ValueError(f"invalid {label}")
     temporary = f".{name}.{secrets.token_hex(12)}.tmp"
     descriptor = -1
     try:
+        _check_target_at(parent_descriptor, name, label)
         descriptor = os.open(
             temporary,
             _open_flags(os.O_WRONLY | os.O_CREAT | os.O_EXCL),
             0o600,
             dir_fd=parent_descriptor,
         )
+        _validate_state_file(descriptor, label)
         os.fchmod(descriptor, 0o600)
         view = memoryview(data)
         while view:
@@ -61,6 +117,9 @@ def _secure_write_json(path: str | os.PathLike[str], value: dict[str, object]) -
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = -1
+        # Recheck immediately before replacement. The transaction lock prevents
+        # cooperating writers from changing this target between the two checks.
+        _check_target_at(parent_descriptor, name, label)
         os.replace(temporary, name, src_dir_fd=parent_descriptor, dst_dir_fd=parent_descriptor)
         os.fsync(parent_descriptor)
     except Exception:
@@ -71,8 +130,15 @@ def _secure_write_json(path: str | os.PathLike[str], value: dict[str, object]) -
         except FileNotFoundError:
             pass
         raise
-    finally:
-        os.close(parent_descriptor)
+
+
+def _validate_nonce_payload(payload: dict[str, object] | None) -> str | None:
+    if payload is None:
+        return None
+    if set(payload) != {"nonce"} or not isinstance(payload["nonce"], str):
+        raise ValueError("invalid nonce state")
+    next_nonce(payload["nonce"])
+    return payload["nonce"]
 
 
 def _load_nonce(path: str | os.PathLike[str]) -> str | None:
@@ -84,29 +150,80 @@ def _load_nonce(path: str | os.PathLike[str]) -> str | None:
             return None
         raise
     try:
-        descriptor = os.open(name, _open_flags(os.O_RDONLY), dir_fd=parent_descriptor)
-    except FileNotFoundError:
-        os.close(parent_descriptor)
-        return None
-    try:
-        status = os.fstat(descriptor)
-        if not stat.S_ISREG(status.st_mode) or stat.S_IMODE(status.st_mode) & 0o077:
-            raise ValueError("nonce state must be a secure regular file")
-        data = os.read(descriptor, 4097)
-        if len(data) > 4096:
-            raise ValueError("invalid nonce state")
-        try:
-            payload = json.loads(data.decode("utf-8"))
-        except (UnicodeDecodeError, json.JSONDecodeError) as error:
-            raise ValueError("invalid nonce state") from error
+        return _validate_nonce_payload(_read_json_at(parent_descriptor, name, "nonce state"))
     finally:
-        os.close(descriptor)
         os.close(parent_descriptor)
-    if not isinstance(payload, dict) or set(payload) != {"nonce"} or not isinstance(payload["nonce"], str):
-        raise ValueError("invalid nonce state")
-    # next_nonce performs exact nonce syntax validation without consuming it.
-    next_nonce(payload["nonce"])
-    return payload["nonce"]
+
+
+def _state_location(nonce_path: str, receipt_path: str) -> tuple[Path, str, str]:
+    nonce_parent, nonce_name = _key_location(nonce_path)
+    receipt_parent, receipt_name = _key_location(receipt_path)
+    if os.path.abspath(nonce_parent) != os.path.abspath(receipt_parent):
+        raise ValueError("nonce and receipt state must share one secure parent directory")
+    if nonce_name == receipt_name or nonce_name in {_STATE_LOCK, _STATE_JOURNAL} or receipt_name in {_STATE_LOCK, _STATE_JOURNAL}:
+        raise ValueError("state filenames must be distinct from transaction files")
+    return nonce_parent, nonce_name, receipt_name
+
+
+def _recover_state(parent_descriptor: int, nonce_name: str, receipt_name: str) -> None:
+    journal = _read_json_at(parent_descriptor, _STATE_JOURNAL, "state journal")
+    if journal is None:
+        return
+    if set(journal) != {"nonce", "receipt"} or not isinstance(journal["nonce"], dict) or not isinstance(journal["receipt"], dict):
+        raise ValueError("invalid state journal")
+    journal_nonce_payload = journal["nonce"]
+    receipt_payload = journal["receipt"]
+    journal_nonce = _validate_nonce_payload(journal_nonce_payload)
+    assert journal_nonce is not None
+    if receipt_payload.get("nonce") != journal_nonce:
+        raise ValueError("state journal nonce and receipt do not match")
+    current_nonce = _validate_nonce_payload(_read_json_at(parent_descriptor, nonce_name, "nonce state"))
+    if current_nonce is None or int(current_nonce) < int(journal_nonce):
+        _write_json_at(parent_descriptor, receipt_name, receipt_payload, "receipt state")
+        _write_json_at(parent_descriptor, nonce_name, journal_nonce_payload, "nonce state")
+    elif current_nonce == journal_nonce:
+        _write_json_at(parent_descriptor, receipt_name, receipt_payload, "receipt state")
+    # A newer nonce proves this journal is stale; never roll it back.
+    os.unlink(_STATE_JOURNAL, dir_fd=parent_descriptor)
+    os.fsync(parent_descriptor)
+
+
+@contextmanager
+def _locked_state(nonce_path: str, receipt_path: str) -> Iterator[tuple[int, str, str]]:
+    parent, nonce_name, receipt_name = _state_location(nonce_path, receipt_path)
+    parent_descriptor = _open_parent(parent, create=True)
+    lock_descriptor = -1
+    try:
+        os.fchmod(parent_descriptor, 0o700)
+        lock_descriptor = os.open(
+            _STATE_LOCK,
+            _open_flags(os.O_RDWR | os.O_CREAT),
+            0o600,
+            dir_fd=parent_descriptor,
+        )
+        _validate_state_file(lock_descriptor, "state lock")
+        os.fchmod(lock_descriptor, 0o600)
+        fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+        _recover_state(parent_descriptor, nonce_name, receipt_name)
+        _check_target_at(parent_descriptor, nonce_name, "nonce state")
+        _check_target_at(parent_descriptor, receipt_name, "receipt state")
+        yield parent_descriptor, nonce_name, receipt_name
+    finally:
+        if lock_descriptor >= 0:
+            os.close(lock_descriptor)
+        os.close(parent_descriptor)
+
+
+def _commit_state(
+    parent_descriptor: int,
+    nonce_name: str,
+    receipt_name: str,
+    nonce_payload: dict[str, object],
+    receipt_payload: dict[str, object],
+) -> None:
+    journal: dict[str, object] = {"nonce": nonce_payload, "receipt": receipt_payload}
+    _write_json_at(parent_descriptor, _STATE_JOURNAL, journal, "state journal")
+    _recover_state(parent_descriptor, nonce_name, receipt_name)
 
 
 def _render_digest(digest: dict[str, object]) -> str:
@@ -180,11 +297,10 @@ def run(
         print(json.dumps(digest, sort_keys=True) if args.format == "json" else _render_digest(digest), file=stdout)
         return 0
 
-    seed = load_identity(args.key_file)
-    public = _public_identity(seed)
-    did = public["did"]
-
     if args.command == "publish-profile":
+        seed = load_identity(args.key_file)
+        public = _public_identity(seed)
+        did = public["did"]
         value = sweep_text(
             args.value if args.value is not None else TechnocoreClient.default_profile_value(did),
             NOTE_MAX_LENGTH,
@@ -208,48 +324,65 @@ def run(
         print(json.dumps({"verified": True, "created": receipt.created, **public}, sort_keys=True), file=stdout)
         return 0
 
-    previous = _load_nonce(args.nonce_file)
-    nonce = next_nonce(previous)
-    signed = sign_message(seed, args.room, nonce, args.text)
-    plan = {
-        "action": "introduce",
-        "dry_run": not args.submit,
-        "method": "POST",
-        "target": f"/r/{args.room}?format=json",
-        "body": {"did": signed.did, "nonce": signed.nonce, "text": signed.text, "sig": "[redacted]"},
-        **public,
-    }
-    print(json.dumps(plan, sort_keys=True), file=stdout)
     if not args.submit:
+        seed = load_identity(args.key_file)
+        public = _public_identity(seed)
+        nonce = next_nonce(_load_nonce(args.nonce_file))
+        signed = sign_message(seed, args.room, nonce, args.text)
+        plan = {
+            "action": "introduce",
+            "dry_run": True,
+            "method": "POST",
+            "target": f"/r/{args.room}?format=json",
+            "body": {"did": signed.did, "nonce": signed.nonce, "text": signed.text, "sig": "[redacted]"},
+            **public,
+        }
+        print(json.dumps(plan, sort_keys=True), file=stdout)
         return 0
 
-    client = client_factory()
-    before = client.get_room(args.room, limit=1)
-    messages = before.get("messages")
-    if not isinstance(messages, list):
-        raise ValueError("room messages must be a list")
-    sequence_evidence = [0]
-    for index, message in enumerate(messages):
-        if not isinstance(message, Mapping):
-            raise ValueError(f"message {index} must be a mapping")
-        seq = message.get("seq")
-        if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
-            raise ValueError(f"message {index} seq must be a non-negative integer")
-        sequence_evidence.append(seq)
-    last_seq = before.get("last_seq")
-    if isinstance(last_seq, int) and not isinstance(last_seq, bool) and last_seq >= 0:
-        sequence_evidence.append(last_seq)
-    prior_last_seq = max(sequence_evidence)
-    receipt = client.post_signed_message(
-        args.room,
-        signed,
-        SubmitAuthorization("introduce"),
-        prior_last_seq=prior_last_seq,
-    )
-    _secure_write_json(args.nonce_file, {"nonce": receipt.nonce})
-    _secure_write_json(
-        args.receipt_file,
-        {
+    with _locked_state(args.nonce_file, args.receipt_file) as (parent_descriptor, nonce_name, receipt_name):
+        previous = _validate_nonce_payload(_read_json_at(parent_descriptor, nonce_name, "nonce state"))
+        nonce = next_nonce(previous)
+        seed = load_identity(args.key_file)
+        public = _public_identity(seed)
+        signed = sign_message(seed, args.room, nonce, args.text)
+        # Drop the only local reference before any network operation. Python does
+        # not guarantee in-place wiping of immutable bytes, so it is never copied,
+        # persisted, or printed.
+        del seed
+        plan = {
+            "action": "introduce",
+            "dry_run": False,
+            "method": "POST",
+            "target": f"/r/{args.room}?format=json",
+            "body": {"did": signed.did, "nonce": signed.nonce, "text": signed.text, "sig": "[redacted]"},
+            **public,
+        }
+        print(json.dumps(plan, sort_keys=True), file=stdout)
+
+        client = client_factory()
+        before = client.get_room(args.room, limit=1)
+        messages = before.get("messages")
+        if not isinstance(messages, list):
+            raise ValueError("room messages must be a list")
+        sequence_evidence = [0]
+        for index, message in enumerate(messages):
+            if not isinstance(message, Mapping):
+                raise ValueError(f"message {index} must be a mapping")
+            seq = message.get("seq")
+            if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
+                raise ValueError(f"message {index} seq must be a non-negative integer")
+            sequence_evidence.append(seq)
+        last_seq = before.get("last_seq")
+        if isinstance(last_seq, int) and not isinstance(last_seq, bool) and last_seq >= 0:
+            sequence_evidence.append(last_seq)
+        receipt = client.post_signed_message(
+            args.room,
+            signed,
+            SubmitAuthorization("introduce"),
+            prior_last_seq=max(sequence_evidence),
+        )
+        receipt_payload: dict[str, object] = {
             "did": receipt.did,
             "profile_path": public["profile_path"],
             "room": receipt.room,
@@ -257,8 +390,15 @@ def run(
             "timestamp": receipt.timestamp,
             "nonce": receipt.nonce,
             "text_hash": hashlib.sha256(receipt.text.encode("utf-8")).hexdigest(),
-        },
-    )
+        }
+        _commit_state(
+            parent_descriptor,
+            nonce_name,
+            receipt_name,
+            {"nonce": receipt.nonce},
+            receipt_payload,
+        )
+
     print(
         json.dumps(
             {"verified": True, "did": receipt.did, "room": receipt.room, "seq": receipt.seq, "nonce": receipt.nonce},

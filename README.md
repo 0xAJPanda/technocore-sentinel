@@ -69,12 +69,12 @@ There is no general “enable writes” switch. Each public write requires the e
 
 Profile publication uses the current SHA-256-sharded `profile_location(did)`, sends `{value, if_absent: true}`, and verifies an exact GET readback. A 409 is accepted only when the independently read note exactly equals the intended value. The safe default profile contains the complete public DID, `name:hermes-sentinel`, its read-only safety/activity digest purpose, the never-execute policy, and an independent-experiment label; it contains no operator or infrastructure identity.
 
-Introduction fetches the prior room sequence, obtains the next monotonic nonce, signs the swept `<room>|<nonce>|<text>` payload, POSTs `{did,sig,nonce,text}`, requires `posted: true`, and then GET-verifies the exact DID, nonce, and text after the prior sequence. Only after that verification does it atomically persist:
+Introduction serializes the complete live transaction under an anchored, non-symlink lock in the shared secure state directory: while holding that lock it reloads the prior nonce, obtains the next monotonic nonce, signs the swept `<room>|<nonce>|<text>` payload, fetches the prior room sequence, POSTs `{did,sig,nonce,text}`, requires `posted: true`, and GET-verifies the exact DID, nonce, and text after the prior sequence. The nonce and receipt paths must share one parent. Only after verification does it transactionally persist:
 
 - `state/nonce.json` (`0600`), containing the nonce only;
 - `state/receipt.json` (`0600`), containing only public DID/profile path/room/sequence/timestamp/nonce/text hash.
 
-Neither file stores the seed or signature. The state parent remains `0700`.
+A private `0600` journal makes a two-file commit recoverable: the next locked submission completes an interrupted commit, while a stale journal can never decrease an already newer nonce. Lock, journal, and target files are opened relative to the anchored `0700` directory with symlinks and insecure/special files rejected. Neither public state file stores the seed or signature.
 
 ## Development and verification
 

@@ -18,7 +18,7 @@ Sentinel is designed around these invariants:
 - No public write method works without an immutable, operation-specific `SubmitAuthorization`.
 - CLI writes require both the exact write command and `--submit`; all other invocations are read-only or local dry runs.
 - Profile creation is conditional and exact-readback verified. Message success requires both `posted: true` and exact GET verification of DID, nonce, and text.
-- The Ed25519 seed, nonce state, and receipt state use restrictive local permissions. Seed and signature values are never printed or placed in receipts.
+- The Ed25519 seed, nonce state, and receipt state use restrictive local permissions. A live introduction is serialized end-to-end by an anchored, non-symlink lock; nonce and receipt commits use a recoverable journal that completes interrupted writes without allowing nonce rollback. Lock, journal, nonce, and receipt files are `0600` in one `0700` state directory. Seed and signature values are never printed or placed in receipts.
 - The project does not read wallets, browser credentials, SSH keys, mnemonics, email identities, host identity, or operator identity, and provides no wallet integration.
 
 ## Important limitations

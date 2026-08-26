@@ -166,7 +166,10 @@ class TechnocoreClient:
                         raise ClientError("JSON response lacks application/json Content-Type")
                 data = self._bounded_read(response)
         except HTTPError as error:
-            body_bytes = self._bounded_read(error)
+            try:
+                body_bytes = self._bounded_read(error)
+            finally:
+                error.close()
             raise HTTPStatusError(error.code, body_bytes) from error
         if not 200 <= status < 300:
             raise HTTPStatusError(status, data)

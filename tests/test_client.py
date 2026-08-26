@@ -11,10 +11,12 @@ from urllib.error import HTTPError
 
 from technocore_sentinel.client import (
     ClientError,
+    HTTPStatusError,
     MAX_RESPONSE_BYTES,
     ResponseTooLarge,
     SubmitAuthorization,
     TechnocoreClient,
+    _RejectRedirects,
 )
 from technocore_sentinel.identity import derive_did_key, profile_location, sign_message
 
@@ -28,11 +30,13 @@ class Response:
         content_type: str | None = "application/json; charset=utf-8",
     ) -> None:
         self.body = BytesIO(body)
+        self.read_sizes: list[int] = []
         self.url = url
         self.status = status
         self.headers = {} if content_type is None else {"Content-Type": content_type}
 
     def read(self, size: int = -1) -> bytes:
+        self.read_sizes.append(size)
         return self.body.read(size)
 
     def geturl(self) -> str:
@@ -55,6 +59,7 @@ class QueueOpener:
     ) -> None:
         self.items = list(items)
         self.requests: list[object] = []
+        self.responses: list[Response] = []
         self.timeouts: list[float] = []
 
     def open(self, request: object, timeout: float) -> Response:
@@ -66,9 +71,13 @@ class QueueOpener:
         requested = request.full_url  # type: ignore[attr-defined]
         if isinstance(item, tuple):
             if len(item) == 3:
-                return Response(item[0], item[1], content_type=item[2])
-            return Response(item[0], item[1])
-        return Response(item, requested)
+                response = Response(item[0], item[1], content_type=item[2])
+            else:
+                response = Response(item[0], item[1])
+        else:
+            response = Response(item, requested)
+        self.responses.append(response)
+        return response
 
 
 def room(messages: list[dict[str, object]] | None = None) -> bytes:
@@ -122,9 +131,30 @@ class ClientValidationTests(unittest.TestCase):
         with self.assertRaises(ClientError):
             TechnocoreClient(opener=QueueOpener([(room(), "https://evil.invalid/r/lobby")])).get_room("lobby")
 
+        handler = _RejectRedirects()
+        self.assertIsNone(
+            handler.redirect_request(
+                mock.Mock(), mock.Mock(), 302, "Found", {"Location": "https://evil.invalid"}, "https://evil.invalid"
+            )
+        )
+
     def test_response_cap_reads_only_one_mib_plus_one(self) -> None:
+        opener = QueueOpener([b"x" * (MAX_RESPONSE_BYTES + 1)])
         with self.assertRaises(ResponseTooLarge):
-            TechnocoreClient(opener=QueueOpener([b"x" * (MAX_RESPONSE_BYTES + 1)])).get_room("lobby")
+            TechnocoreClient(opener=opener).get_room("lobby")
+        self.assertEqual(opener.responses[0].read_sizes, [MAX_RESPONSE_BYTES + 1])
+
+    def test_http_error_body_is_bounded_and_response_always_closed(self) -> None:
+        url = "https://technocore.chat/r/lobby?format=json&limit=200"
+        for body, expected_error in (
+            (b"normal error", HTTPStatusError),
+            (b"x" * (MAX_RESPONSE_BYTES + 1), ResponseTooLarge),
+        ):
+            stream = BytesIO(body)
+            error = HTTPError(url, 500, "Error", {}, stream)
+            with self.subTest(size=len(body)), self.assertRaises(expected_error):
+                TechnocoreClient(opener=QueueOpener([error])).get_room("lobby")
+            self.assertTrue(stream.closed)
 
     def test_json_responses_require_json_media_type(self) -> None:
         url = "https://technocore.chat/r/lobby?format=json&limit=200"

@@ -7,10 +7,19 @@ import json
 from pathlib import Path
 import stat
 import tempfile
+import threading
+import time
 import unittest
 from unittest import mock
 
-from technocore_sentinel.cli import run
+from technocore_sentinel.cli import (
+    _STATE_JOURNAL,
+    _commit_state,
+    _locked_state,
+    _read_json_at,
+    _write_json_at,
+    run,
+)
 from technocore_sentinel.client import MessageReceipt
 from technocore_sentinel.identity import derive_did_key, sign_message
 
@@ -170,6 +179,135 @@ class CLITests(unittest.TestCase):
                     stdout=StringIO(),
                 )
             self.assertEqual(fake.posts, 0)
+
+    def test_state_destination_symlinks_are_rejected_before_network(self) -> None:
+        for target_name in ("nonce.json", "receipt.json"):
+            with self.subTest(target=target_name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                key = self.key(root)
+                outside = root / "outside"
+                outside.write_text("unchanged", encoding="utf-8")
+                outside.chmod(0o600)
+                (root / target_name).symlink_to(outside)
+                fake = FakeClient()
+                with self.assertRaises(ValueError):
+                    run(
+                        [
+                            "introduce", "--key-file", str(key),
+                            "--nonce-file", str(root / "nonce.json"),
+                            "--receipt-file", str(root / "receipt.json"),
+                            "--text", "hello", "--submit",
+                        ],
+                        client_factory=lambda: fake,  # type: ignore[arg-type]
+                        stdout=StringIO(),
+                    )
+                self.assertEqual(fake.posts, 0)
+                self.assertEqual(outside.read_text(encoding="utf-8"), "unchanged")
+
+    def test_partial_commit_is_recovered_and_stale_journal_cannot_roll_back(self) -> None:
+        receipt: dict[str, object] = {"nonce": "200", "room": "lobby"}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            nonce_path = str(root / "nonce.json")
+            receipt_path = str(root / "receipt.json")
+            real_write = _write_json_at
+            failed = False
+
+            def interrupt(parent: int, name: str, value: dict[str, object], label: str) -> None:
+                nonlocal failed
+                if name == "nonce.json" and not failed:
+                    failed = True
+                    raise OSError("simulated interrupted nonce commit")
+                real_write(parent, name, value, label)
+
+            with self.assertRaises(OSError), _locked_state(nonce_path, receipt_path) as state:
+                with mock.patch("technocore_sentinel.cli._write_json_at", side_effect=interrupt):
+                    _commit_state(*state, {"nonce": "200"}, receipt)
+            self.assertTrue((root / _STATE_JOURNAL).exists())
+            self.assertEqual(stat.S_IMODE((root / _STATE_JOURNAL).stat().st_mode), 0o600)
+
+            with _locked_state(nonce_path, receipt_path) as (parent, nonce_name, receipt_name):
+                self.assertEqual(_read_json_at(parent, nonce_name, "nonce state"), {"nonce": "200"})
+                self.assertEqual(_read_json_at(parent, receipt_name, "receipt state"), receipt)
+            self.assertFalse((root / _STATE_JOURNAL).exists())
+
+            # Simulate a stale journal left behind after a newer completed write.
+            with _locked_state(nonce_path, receipt_path) as (parent, nonce_name, receipt_name):
+                real_write(parent, nonce_name, {"nonce": "300"}, "nonce state")
+                newer_receipt: dict[str, object] = {"nonce": "300", "room": "lobby"}
+                real_write(parent, receipt_name, newer_receipt, "receipt state")
+                real_write(
+                    parent,
+                    _STATE_JOURNAL,
+                    {"nonce": {"nonce": "200"}, "receipt": receipt},
+                    "state journal",
+                )
+            with _locked_state(nonce_path, receipt_path) as (parent, nonce_name, receipt_name):
+                self.assertEqual(_read_json_at(parent, nonce_name, "nonce state"), {"nonce": "300"})
+                self.assertEqual(_read_json_at(parent, receipt_name, "receipt state"), newer_receipt)
+
+    def test_concurrent_submissions_are_serialized_and_state_files_match(self) -> None:
+        class BlockingClient(FakeClient):
+            def get_room(self, room: str, *, limit: int) -> dict[str, object]:
+                with counter_lock:
+                    active[0] += 1
+                    maximum[0] = max(maximum[0], active[0])
+                    entered.set()
+                release.wait(2)
+                try:
+                    return super().get_room(room, limit=limit)
+                finally:
+                    with counter_lock:
+                        active[0] -= 1
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            key = self.key(root)
+            nonce = root / "nonce.json"
+            receipt = root / "receipt.json"
+            entered = threading.Event()
+            release = threading.Event()
+            counter_lock = threading.Lock()
+            active = [0]
+            maximum = [0]
+            outputs = [StringIO(), StringIO()]
+            errors: list[BaseException] = []
+            start = threading.Barrier(3)
+
+            def submit(index: int) -> None:
+                try:
+                    start.wait()
+                    run(
+                        [
+                            "introduce", "--key-file", str(key),
+                            "--nonce-file", str(nonce), "--receipt-file", str(receipt),
+                            "--text", f"hello {index}", "--submit",
+                        ],
+                        client_factory=BlockingClient,  # type: ignore[arg-type]
+                        stdout=outputs[index],
+                    )
+                except BaseException as error:
+                    errors.append(error)
+
+            threads = [threading.Thread(target=submit, args=(index,)) for index in range(2)]
+            for thread in threads:
+                thread.start()
+            start.wait()
+            self.assertTrue(entered.wait(1))
+            time.sleep(0.05)
+            self.assertEqual(maximum[0], 1)
+            release.set()
+            for thread in threads:
+                thread.join(2)
+            self.assertFalse(errors)
+            self.assertTrue(all(not thread.is_alive() for thread in threads))
+            committed = json.loads(nonce.read_text(encoding="utf-8"))["nonce"]
+            receipt_data = json.loads(receipt.read_text(encoding="utf-8"))
+            returned = [json.loads(output.getvalue().splitlines()[-1])["nonce"] for output in outputs]
+            self.assertEqual(len(set(returned)), 2)
+            self.assertEqual(committed, max(returned, key=int))
+            self.assertEqual(receipt_data["nonce"], committed)
+            self.assertEqual(stat.S_IMODE((root / ".introduce.lock").stat().st_mode), 0o600)
 
     def test_scan_text_and_json_render_use_get_digest(self) -> None:
         fake = FakeClient()
