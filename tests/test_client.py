@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from io import BytesIO
 import json
 import unittest
@@ -14,16 +15,22 @@ from technocore_sentinel.client import (
     ResponseTooLarge,
     SubmitAuthorization,
     TechnocoreClient,
-    UNTRUSTED_CONTENT_SEPARATOR,
 )
 from technocore_sentinel.identity import derive_did_key, profile_location, sign_message
 
 
 class Response:
-    def __init__(self, body: bytes, url: str, status: int = 200) -> None:
+    def __init__(
+        self,
+        body: bytes,
+        url: str,
+        status: int = 200,
+        content_type: str | None = "application/json; charset=utf-8",
+    ) -> None:
         self.body = BytesIO(body)
         self.url = url
         self.status = status
+        self.headers = {} if content_type is None else {"Content-Type": content_type}
 
     def read(self, size: int = -1) -> bytes:
         return self.body.read(size)
@@ -42,8 +49,11 @@ class Response:
 
 
 class QueueOpener:
-    def __init__(self, items: list[bytes | Exception | tuple[bytes, str]]) -> None:
-        self.items = items
+    def __init__(
+        self,
+        items: Sequence[bytes | Exception | tuple[bytes, str] | tuple[bytes, str, str | None]],
+    ) -> None:
+        self.items = list(items)
         self.requests: list[object] = []
         self.timeouts: list[float] = []
 
@@ -55,6 +65,8 @@ class QueueOpener:
             raise item
         requested = request.full_url  # type: ignore[attr-defined]
         if isinstance(item, tuple):
+            if len(item) == 3:
+                return Response(item[0], item[1], content_type=item[2])
             return Response(item[0], item[1])
         return Response(item, requested)
 
@@ -64,7 +76,7 @@ def room(messages: list[dict[str, object]] | None = None) -> bytes:
 
 
 def note(value: str) -> bytes:
-    return ("Technocore warning" + UNTRUSTED_CONTENT_SEPARATOR + value).encode()
+    return json.dumps({"value": value}).encode()
 
 
 class ClientValidationTests(unittest.TestCase):
@@ -95,6 +107,7 @@ class ClientValidationTests(unittest.TestCase):
         self.assertEqual(request.get_method(), "GET")  # type: ignore[attr-defined]
         self.assertEqual(request.full_url, "https://technocore.chat/r/lobby?format=json&limit=5")  # type: ignore[attr-defined]
         self.assertEqual(request.headers["Accept-encoding"], "identity")  # type: ignore[attr-defined]
+        self.assertEqual(request.headers["Accept"], "application/json")  # type: ignore[attr-defined]
         self.assertIn("technocore-sentinel", request.headers["User-agent"])  # type: ignore[attr-defined]
         self.assertEqual(opener.timeouts, [20.0])
 
@@ -113,12 +126,32 @@ class ClientValidationTests(unittest.TestCase):
         with self.assertRaises(ResponseTooLarge):
             TechnocoreClient(opener=QueueOpener([b"x" * (MAX_RESPONSE_BYTES + 1)])).get_room("lobby")
 
-    def test_note_requires_exact_separator_and_caps_value(self) -> None:
+    def test_json_responses_require_json_media_type(self) -> None:
+        url = "https://technocore.chat/r/lobby?format=json&limit=200"
+        for content_type in (None, "text/plain", "application/problem+json"):
+            with self.subTest(content_type=content_type), self.assertRaises(ClientError):
+                TechnocoreClient(
+                    opener=QueueOpener([(room(), url, content_type)])
+                ).get_room("lobby")
+
+    def test_note_requires_exact_json_shape_and_caps_value(self) -> None:
         self.assertEqual(TechnocoreClient.parse_note_response(note("exact")), "exact")
-        with self.assertRaises(ClientError):
-            TechnocoreClient.parse_note_response(b"exact")
+        for invalid in (b'"exact"', b'{"value":"exact","extra":true}', b'{"value":1}', b"{}"):
+            with self.subTest(invalid=invalid), self.assertRaises(ClientError):
+                TechnocoreClient.parse_note_response(invalid)
         with self.assertRaises(ResponseTooLarge):
             TechnocoreClient.parse_note_response(note("x" * 8193))
+
+        opener = QueueOpener([note("exact")])
+        self.assertEqual(TechnocoreClient(opener=opener).get_note("profiles", "alice"), "exact")
+        request = opener.requests[0]
+        self.assertEqual(request.full_url, "https://technocore.chat/kv/profiles/alice?format=json")  # type: ignore[attr-defined]
+        self.assertEqual(request.headers["Accept"], "application/json")  # type: ignore[attr-defined]
+
+    def test_get_room_rejects_payload_for_a_different_room(self) -> None:
+        payload = json.dumps({"room": "elsewhere", "messages": []}).encode()
+        with self.assertRaises(ClientError):
+            TechnocoreClient(opener=QueueOpener([payload])).get_room("lobby")
 
 
 class ClientWriteTests(unittest.TestCase):
@@ -185,6 +218,25 @@ class ClientWriteTests(unittest.TestCase):
         })
         self.assertEqual(get.full_url, "https://technocore.chat/r/lobby?format=json&limit=200&since=7")  # type: ignore[attr-defined]
         self.assertEqual(receipt.seq, 8)
+
+    def test_signed_post_authorization_failures_make_no_requests(self) -> None:
+        signed = sign_message(self.seed, "lobby", "123", "hello")
+        for authorization in (None, object(), SubmitAuthorization("publish-profile")):
+            opener = QueueOpener([])
+            with self.subTest(authorization=authorization), self.assertRaises(PermissionError):
+                TechnocoreClient(opener=opener).post_signed_message(
+                    "lobby", signed, authorization, prior_last_seq=0  # type: ignore[arg-type]
+                )
+            self.assertEqual(opener.requests, [])
+
+    def test_signed_readback_sequence_must_advance(self) -> None:
+        signed = sign_message(self.seed, "lobby", "123", "hello")
+        for seq in (True, 7):
+            verified = room([{"seq": seq, "from": signed.did, "nonce": "123", "text": "hello"}])
+            with self.subTest(seq=seq), self.assertRaises(ClientError):
+                TechnocoreClient(opener=QueueOpener([b'{"posted":true}', verified])).post_signed_message(
+                    "lobby", signed, SubmitAuthorization("introduce"), prior_last_seq=7
+                )
 
     def test_http_200_is_not_enough_for_signed_post(self) -> None:
         signed = sign_message(self.seed, "lobby", "123", "hello")

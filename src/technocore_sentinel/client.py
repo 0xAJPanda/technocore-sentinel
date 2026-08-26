@@ -22,10 +22,6 @@ DEFAULT_ORIGIN = "https://technocore.chat"
 DEFAULT_TIMEOUT = 20.0
 MAX_RESPONSE_BYTES = 1024 * 1024
 USER_AGENT = "technocore-sentinel/0.1.0"
-# The plain-text note endpoint places the caller-controlled value after this
-# fixed server banner separator.  Values containing this string are harmless:
-# extraction splits only at the first separator.
-UNTRUSTED_CONTENT_SEPARATOR = "\n--- BEGIN TECHNOCORE UNTRUSTED CONTENT ---\n"
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,47}$", re.ASCII)
 
 
@@ -162,6 +158,11 @@ class TechnocoreClient:
                 if final_url != url:
                     raise ClientError("redirect or response URL mismatch refused")
                 status = response.getcode()
+                if query.get("format") == "json":
+                    content_type = response.headers.get("Content-Type")
+                    media_type = content_type.split(";", 1)[0].strip().lower() if content_type else None
+                    if media_type != "application/json":
+                        raise ClientError("JSON response lacks application/json Content-Type")
                 data = self._bounded_read(response)
         except HTTPError as error:
             body_bytes = self._bounded_read(error)
@@ -190,7 +191,12 @@ class TechnocoreClient:
                 raise ValueError("since must be a non-negative integer")
             query["since"] = since
         payload = self._json_mapping(self._request("GET", f"/r/{room}", query), "room")
-        scan_room_payload(payload)
+        if payload.get("room") != room:
+            raise ClientError("room response does not match requested room")
+        try:
+            scan_room_payload(payload)
+        except (TypeError, ValueError) as error:
+            raise ClientError("room response failed schema validation") from error
         return payload
 
     def scan_room(self, room: str, *, limit: int = 200) -> dict[str, object]:
@@ -198,13 +204,10 @@ class TechnocoreClient:
 
     @staticmethod
     def parse_note_response(data: bytes) -> str:
-        try:
-            text = data.decode("utf-8")
-        except UnicodeDecodeError as error:
-            raise ClientError("note response is not UTF-8") from error
-        if UNTRUSTED_CONTENT_SEPARATOR not in text:
-            raise ClientError("note response lacks the known untrusted-content separator")
-        value = text.split(UNTRUSTED_CONTENT_SEPARATOR, 1)[1]
+        payload = TechnocoreClient._json_mapping(data, "note")
+        if set(payload) != {"value"} or not isinstance(payload["value"], str):
+            raise ClientError("note JSON must contain exactly one text value field")
+        value = payload["value"]
         if len(value) > NOTE_MAX_LENGTH:
             raise ResponseTooLarge("note value exceeds protocol limit")
         return value
@@ -212,7 +215,9 @@ class TechnocoreClient:
     def get_note(self, namespace: str, key: str) -> str:
         namespace = self._name(namespace, "namespace")
         key = self._name(key, "key")
-        return self.parse_note_response(self._request("GET", f"/kv/{namespace}/{key}", {}))
+        return self.parse_note_response(
+            self._request("GET", f"/kv/{namespace}/{key}", {"format": "json"})
+        )
 
     @staticmethod
     def default_profile_value(did: str) -> str:
@@ -293,8 +298,8 @@ class TechnocoreClient:
             raise ClientError("signed message exact readback verification failed")
         match = matches[0]
         seq = match.get("seq")
-        if isinstance(seq, bool) or not isinstance(seq, int):
-            raise ClientError("verified message lacks a valid sequence")
+        if isinstance(seq, bool) or not isinstance(seq, int) or seq <= prior_last_seq:
+            raise ClientError("verified message lacks a valid advancing sequence")
         timestamp = match.get("ts")
         if timestamp is not None and not isinstance(timestamp, str):
             raise ClientError("verified message timestamp is invalid")
