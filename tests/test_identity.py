@@ -1,11 +1,12 @@
 """Executable specifications for Sentinel identity wire formats."""
 
-from pathlib import Path
+import hashlib
+import unicodedata
 import unittest
 
 from technocore_sentinel.identity import (
     derive_did_key,
-    fingerprint_path,
+    profile_location,
     sign_canonical,
     sweep_unicode,
 )
@@ -22,9 +23,22 @@ class IdentityProtocolTests(unittest.TestCase):
         )
 
     def test_unicode_sweep_removes_server_rejected_categories(self) -> None:
-        rejected = "\x00\u200b\ud800\ue000\u2028\u2029"
-        # Respectively: Cc, Cf, Cs, Co, Zl, and Zp. Ordinary spaces (Zs) remain.
-        self.assertEqual(sweep_unicode(f"left {rejected} right"), "left  right")
+        rejected_by_category = {
+            "Cc": "\x00",
+            "Cf": "\u200b",
+            "Cs": "\ud800",
+            "Co": "\ue000",
+            "Zl": "\u2028",
+            "Zp": "\u2029",
+        }
+
+        for category, character in rejected_by_category.items():
+            with self.subTest(category=category):
+                self.assertEqual(unicodedata.category(character), category)
+                self.assertEqual(sweep_unicode(f"left{character}right"), "left right")
+
+        self.assertEqual(sweep_unicode("left   right"), "left   right")
+        self.assertEqual(sweep_unicode("\x00left\u2029"), "left")
 
     def test_signature_is_unpadded_base64url_with_86_characters(self) -> None:
         seed = bytes(32)
@@ -41,12 +55,22 @@ class IdentityProtocolTests(unittest.TestCase):
         self.assertNotIn("+", encoded)
         self.assertNotIn("/", encoded)
 
-    def test_fingerprint_path_is_sharded_by_leading_bytes(self) -> None:
-        fingerprint = "abcdef0123456789"
+    def test_profile_location_is_sharded_from_full_did_fingerprint(self) -> None:
+        did = "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp"
+        expected_fingerprint = "ad90ec18fd5e0735"
 
         self.assertEqual(
-            fingerprint_path(Path("state"), fingerprint),
-            Path("state/fingerprints/ab/cd/abcdef0123456789.json"),
+            hashlib.sha256(did.encode("utf-8")).hexdigest()[:16],
+            expected_fingerprint,
+        )
+        self.assertEqual(
+            profile_location(did),
+            (
+                expected_fingerprint,
+                "did-ad",
+                "90ec18fd5e0735",
+                "/kv/did-ad/90ec18fd5e0735",
+            ),
         )
 
 
