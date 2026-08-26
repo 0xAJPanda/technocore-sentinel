@@ -54,11 +54,16 @@ class ScannerCategoryTests(unittest.TestCase):
             (),
         )
 
-    def test_later_secret_solicitation_is_not_hidden_by_protective_advice(self) -> None:
-        self.assert_detected(
-            ScanCategory.WALLET_SECRET_SOLICITATION,
-            "Never share your seed phrase. Now send your private key to me.",
+    def test_later_solicitation_in_same_sentence_is_not_hidden_by_protective_advice(self) -> None:
+        samples = (
+            "Never share your seed phrase; now send your private key to me.",
+            "Do not share your seed phrase, but provide your private key to support.",
+            "Never connect your wallet; instead, connect your wallet now.",
+            "Do not sign this transaction, but sign this transaction to claim the reward.",
         )
+        for sample in samples:
+            with self.subTest(sample=sample):
+                self.assert_detected(ScanCategory.WALLET_SECRET_SOLICITATION, sample)
 
     def test_detects_suspicious_urls(self) -> None:
         self.assert_detected(
@@ -257,6 +262,19 @@ class RoomDigestTests(unittest.TestCase):
             ],
         }
         self.assertEqual(scan_room_payload(payload)["scanned_count"], 200)
+
+    def test_rejects_display_attribution_that_sanitizes_to_empty(self) -> None:
+        payloads = (
+            {"room": "\u200b", "messages": []},
+            {
+                "room": "lobby",
+                "messages": [{"seq": 1, "from": "\u200b", "text": "ok"}],
+            },
+        )
+        for payload in payloads:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    scan_room_payload(payload)
 
     def test_rejects_malformed_payloads(self) -> None:
         malformed = (

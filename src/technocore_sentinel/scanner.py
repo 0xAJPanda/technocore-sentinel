@@ -47,7 +47,12 @@ class Finding:
 
 _URL_RE = re.compile(r"\bhttps?://[^\s<>\"'`]+", re.IGNORECASE)
 _WORD_RE = re.compile(r"[\w'-]+", re.UNICODE)
-_SENTENCE_RE = re.compile(r"[^.!?\r\n]+(?:[.!?]+|$)")
+_CLAUSE_BOUNDARY_RE = re.compile(
+    r"[.!?;\r\n]+|"
+    r"(?:,\s*)?\b(?:but|however|instead|yet|nevertheless|nonetheless)\b[,:]?|"
+    r",\s*(?=(?:now|then)\b)",
+    re.IGNORECASE,
+)
 _ED25519_DID_RE = re.compile(r"did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}\Z")
 # A 64-byte signature has 86 unpadded base64url characters.  Its final
 # character contains only two data bits, so canonical encodings end as below.
@@ -210,7 +215,10 @@ def scan_text(text: str) -> tuple[Finding, ...]:
 
     excerpt = _excerpt(text)
     findings: list[Finding] = []
-    sentences = tuple(match.group(0) for match in _SENTENCE_RE.finditer(text))
+    # Protective advice only suppresses requests in the same local clause.
+    # Adversative transitions explicitly start a new clause so an attacker
+    # cannot negate an initial warning and hide a later solicitation behind it.
+    clauses = tuple(clause for clause in _CLAUSE_BOUNDARY_RE.split(text) if clause.strip())
 
     if _IGNORE_INSTRUCTIONS_RE.search(text):
         findings.append(Finding(ScanCategory.PROMPT_INJECTION, Severity.HIGH, "ignore prior instructions", excerpt))
@@ -225,15 +233,15 @@ def scan_text(text: str) -> tuple[Finding, ...]:
         findings.append(Finding(ScanCategory.COMMAND_EXECUTION, Severity.HIGH, "imperative shell command with executable tool", excerpt))
 
     wallet_request = any(
-        _WALLET_ACTION_RE.search(sentence)
-        and not _PROTECTIVE_WALLET_RE.search(sentence)
-        for sentence in sentences
+        _WALLET_ACTION_RE.search(clause)
+        and not _PROTECTIVE_WALLET_RE.search(clause)
+        for clause in clauses
     )
     secret_request = any(
-        _SECRET_RE.search(sentence)
-        and _SOLICIT_RE.search(sentence)
-        and not _PROTECTIVE_SECRET_RE.search(sentence)
-        for sentence in sentences
+        _SECRET_RE.search(clause)
+        and _SOLICIT_RE.search(clause)
+        and not _PROTECTIVE_SECRET_RE.search(clause)
+        for clause in clauses
     )
     if wallet_request:
         findings.append(Finding(ScanCategory.WALLET_SECRET_SOLICITATION, Severity.HIGH, "wallet connection or transaction-signing request", excerpt))
@@ -308,6 +316,9 @@ def scan_room_payload(payload: object) -> dict[str, object]:
     messages = payload.get("messages")
     if not isinstance(room, str) or not room.strip() or len(room) > 256:
         raise ValueError("room must be a non-empty string of at most 256 characters")
+    sanitized_room = _sanitize_display(room)
+    if not sanitized_room:
+        raise ValueError("room must contain displayable characters")
     if not isinstance(messages, list):
         raise ValueError("messages must be a list")
     if len(messages) > 200:
@@ -329,6 +340,9 @@ def scan_room_payload(payload: object) -> dict[str, object]:
             raise ValueError(f"message {index} seq must be a non-negative integer")
         if not isinstance(sender, str) or not sender.strip() or len(sender) > 256:
             raise ValueError(f"message {index} from must be a non-empty string of at most 256 characters")
+        sanitized_sender = _sanitize_display(sender)
+        if not sanitized_sender:
+            raise ValueError(f"message {index} from must contain displayable characters")
         if not isinstance(text, str) or len(text) > 100_000:
             raise ValueError(f"message {index} text must be a string of at most 100000 characters")
         if "signed" in message and not isinstance(message["signed"], bool):
@@ -346,7 +360,7 @@ def scan_room_payload(payload: object) -> dict[str, object]:
                 examples[category].append(
                     {
                         "seq": seq,
-                        "from": _sanitize_display(sender),
+                        "from": sanitized_sender,
                         "severity": finding.severity.value,
                         "rule": finding.rule,
                         "excerpt": finding.excerpt,
@@ -354,7 +368,7 @@ def scan_room_payload(payload: object) -> dict[str, object]:
                 )
 
     return {
-        "room": _sanitize_display(room),
+        "room": sanitized_room,
         "first_seq": min(sequences) if sequences else None,
         "last_seq": max(sequences) if sequences else None,
         "scanned_count": len(messages),
