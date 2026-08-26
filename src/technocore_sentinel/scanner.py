@@ -53,7 +53,10 @@ _CLAUSE_BOUNDARY_RE = re.compile(
     r",\s*(?=(?:now|then)\b)",
     re.IGNORECASE,
 )
-_ED25519_DID_RE = re.compile(r"did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}\Z")
+_BASE58BTC_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+_BASE58BTC_VALUES = {character: value for value, character in enumerate(_BASE58BTC_ALPHABET)}
+_ED25519_DID_PREFIX = "did:key:z"
+_ED25519_MULTICODEC = b"\xed\x01"
 # A 64-byte signature has 86 unpadded base64url characters.  Its final
 # character contains only two data bits, so canonical encodings end as below.
 _LEGACY_SIGNATURE_RE = re.compile(r"[A-Za-z0-9_-]{85}[AQgw]\Z")
@@ -276,6 +279,28 @@ def scan_text(text: str) -> tuple[Finding, ...]:
     return tuple(findings)
 
 
+def _is_ed25519_did(sender: str) -> bool:
+    """Strictly decode and validate a Base58btc Ed25519 ``did:key`` marker."""
+
+    if not sender.startswith(_ED25519_DID_PREFIX):
+        return False
+    fingerprint = sender[len(_ED25519_DID_PREFIX) :]
+    if not fingerprint:
+        return False
+
+    value = 0
+    try:
+        for character in fingerprint:
+            value = value * 58 + _BASE58BTC_VALUES[character]
+    except KeyError:
+        return False
+
+    leading_zeroes = len(fingerprint) - len(fingerprint.lstrip("1"))
+    decoded_body = value.to_bytes((value.bit_length() + 7) // 8, "big")
+    decoded = b"\x00" * leading_zeroes + decoded_body
+    return len(decoded) == 34 and decoded[:2] == _ED25519_MULTICODEC
+
+
 def _is_signed(message: Mapping[str, object]) -> bool:
     explicit = message.get("signed")
     # An explicit negative marker always wins over inferred live or legacy
@@ -287,7 +312,7 @@ def _is_signed(message: Mapping[str, object]) -> bool:
     nonce = message.get("nonce")
     valid_live_marker = (
         isinstance(sender, str)
-        and _ED25519_DID_RE.fullmatch(sender) is not None
+        and _is_ed25519_did(sender)
         and isinstance(nonce, int)
         and not isinstance(nonce, bool)
         and 1 <= nonce <= _MAX_NONCE

@@ -218,6 +218,21 @@ class RoomDigestTests(unittest.TestCase):
                 digest = scan_room_payload(payload)
                 self.assertEqual(digest["signed_count"], 0)
 
+    def test_rejects_textually_plausible_but_invalid_ed25519_dids(self) -> None:
+        invalid_dids = (
+            "did:key:z6Mk11111111111111111111111111111111111111111111",
+            "did:key:z6Mkzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+        )
+        for did in invalid_dids:
+            with self.subTest(did=did):
+                payload = {
+                    "room": "lobby",
+                    "messages": [{"seq": 1, "from": did, "nonce": 1, "text": "ok"}],
+                }
+                digest = scan_room_payload(payload)
+                self.assertEqual(digest["signed_count"], 0)
+                self.assertEqual(digest["unsigned_count"], 1)
+
     def test_rejects_unrecognizable_legacy_signature(self) -> None:
         payload = {
             "room": "lobby",
