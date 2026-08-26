@@ -48,6 +48,11 @@ class Finding:
 _URL_RE = re.compile(r"\bhttps?://[^\s<>\"'`]+", re.IGNORECASE)
 _WORD_RE = re.compile(r"[\w'-]+", re.UNICODE)
 _SENTENCE_RE = re.compile(r"[^.!?\r\n]+(?:[.!?]+|$)")
+_ED25519_DID_RE = re.compile(r"did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}\Z")
+# A 64-byte signature has 86 unpadded base64url characters.  Its final
+# character contains only two data bits, so canonical encodings end as below.
+_LEGACY_SIGNATURE_RE = re.compile(r"[A-Za-z0-9_-]{85}[AQgw]\Z")
+_MAX_NONCE = 9_999_999_999_999_999_999
 
 _IGNORE_INSTRUCTIONS_RE = re.compile(
     r"\b(?:ignore|disregard|forget|bypass|override)\b.{0,48}"
@@ -139,8 +144,8 @@ _FORMULAIC_FARMING_RE = re.compile(
 )
 
 
-def _excerpt(text: str) -> str:
-    """Make display-only text safe, compact, URL-redacted, and bounded."""
+def _sanitize_display(text: str) -> str:
+    """Make untrusted display text safe, compact, URL-redacted, and bounded."""
 
     redacted = _URL_RE.sub("[url]", text)
     cleaned = "".join(
@@ -153,6 +158,10 @@ def _excerpt(text: str) -> str:
     if len(collapsed) <= 160:
         return collapsed
     return collapsed[:157].rstrip() + "..."
+
+
+def _excerpt(text: str) -> str:
+    return _sanitize_display(text)
 
 
 def _url_has_literal_risky_host(url: str) -> bool:
@@ -261,18 +270,27 @@ def scan_text(text: str) -> tuple[Finding, ...]:
 
 def _is_signed(message: Mapping[str, object]) -> bool:
     explicit = message.get("signed")
-    if explicit is True:
-        return True
-    if any(isinstance(message.get(field), str) and bool(message[field]) for field in ("signature", "sig")):
-        return True
+    # An explicit negative marker always wins over inferred live or legacy
+    # markers.  A positive boolean alone is not cryptographic evidence.
+    if explicit is False:
+        return False
+
     sender = message.get("from")
     nonce = message.get("nonce")
-    return (
+    valid_live_marker = (
         isinstance(sender, str)
-        and sender.startswith("did:key:z6Mk")
+        and _ED25519_DID_RE.fullmatch(sender) is not None
         and isinstance(nonce, int)
         and not isinstance(nonce, bool)
-        and nonce >= 0
+        and 1 <= nonce <= _MAX_NONCE
+    )
+    if valid_live_marker:
+        return True
+
+    return any(
+        isinstance(signature := message.get(field), str)
+        and _LEGACY_SIGNATURE_RE.fullmatch(signature) is not None
+        for field in ("signature", "sig")
     )
 
 
@@ -328,7 +346,7 @@ def scan_room_payload(payload: object) -> dict[str, object]:
                 examples[category].append(
                     {
                         "seq": seq,
-                        "from": sender,
+                        "from": _sanitize_display(sender),
                         "severity": finding.severity.value,
                         "rule": finding.rule,
                         "excerpt": finding.excerpt,
@@ -336,7 +354,7 @@ def scan_room_payload(payload: object) -> dict[str, object]:
                 )
 
     return {
-        "room": room,
+        "room": _sanitize_display(room),
         "first_seq": min(sequences) if sequences else None,
         "last_seq": max(sequences) if sequences else None,
         "scanned_count": len(messages),
