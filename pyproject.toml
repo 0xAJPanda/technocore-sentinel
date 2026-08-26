@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "technocore-sentinel"
+version = "0.1.0"
+description = "Protocol identity and content scanning for Technocore Sentinel"
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=43",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/technocore_sentinel"]
