@@ -61,6 +61,10 @@ _ED25519_MULTICODEC = b"\xed\x01"
 # character contains only two data bits, so canonical encodings end as below.
 _LEGACY_SIGNATURE_RE = re.compile(r"[A-Za-z0-9_-]{85}[AQgw]\Z")
 _MAX_NONCE = 9_999_999_999_999_999_999
+# Technocore rooms contain at most 200 messages of at most 4096 text
+# characters each.  Bound total regex/sanitization work even when an
+# upstream or adversarial payload uses the scanner's larger per-field guard.
+MAX_AGGREGATE_TEXT_CHARACTERS = 200 * 4096
 
 _IGNORE_INSTRUCTIONS_RE = re.compile(
     r"\b(?:ignore|disregard|forget|bypass|override)\b.{0,48}"
@@ -168,10 +172,6 @@ def _sanitize_display(text: str) -> str:
     return collapsed[:157].rstrip() + "..."
 
 
-def _excerpt(text: str) -> str:
-    return _sanitize_display(text)
-
-
 def _url_has_literal_risky_host(url: str) -> bool:
     """Inspect a URL lexically; this never performs DNS or any other I/O."""
 
@@ -216,7 +216,7 @@ def scan_text(text: str) -> tuple[Finding, ...]:
     if not isinstance(text, str):
         raise TypeError("text must be a string")
 
-    excerpt = _excerpt(text)
+    excerpt = _sanitize_display(text)
     findings: list[Finding] = []
     # Protective advice only suppresses requests in the same local clause.
     # Adversative transitions explicitly start a new clause so an attacker
@@ -341,20 +341,12 @@ def scan_room_payload(payload: object) -> dict[str, object]:
     messages = payload.get("messages")
     if not isinstance(room, str) or not room.strip() or len(room) > 256:
         raise ValueError("room must be a non-empty string of at most 256 characters")
-    sanitized_room = _sanitize_display(room)
-    if not sanitized_room:
-        raise ValueError("room must contain displayable characters")
     if not isinstance(messages, list):
         raise ValueError("messages must be a list")
     if len(messages) > 200:
         raise ValueError("messages must contain at most 200 entries")
 
-    category_counts = {category.value: 0 for category in ScanCategory}
-    severity_counts = {severity.value: 0 for severity in Severity}
-    examples: dict[str, list[dict[str, object]]] = {category.value: [] for category in ScanCategory}
-    sequences: list[int] = []
-    signed_count = 0
-
+    aggregate_text_characters = 0
     for index, message in enumerate(messages):
         if not isinstance(message, Mapping):
             raise ValueError(f"message {index} must be a mapping")
@@ -365,13 +357,37 @@ def scan_room_payload(payload: object) -> dict[str, object]:
             raise ValueError(f"message {index} seq must be a non-negative integer")
         if not isinstance(sender, str) or not sender.strip() or len(sender) > 256:
             raise ValueError(f"message {index} from must be a non-empty string of at most 256 characters")
-        sanitized_sender = _sanitize_display(sender)
-        if not sanitized_sender:
-            raise ValueError(f"message {index} from must contain displayable characters")
         if not isinstance(text, str) or len(text) > 100_000:
             raise ValueError(f"message {index} text must be a string of at most 100000 characters")
         if "signed" in message and not isinstance(message["signed"], bool):
             raise ValueError(f"message {index} signed must be a boolean when present")
+
+        aggregate_text_characters += len(text)
+        if aggregate_text_characters > MAX_AGGREGATE_TEXT_CHARACTERS:
+            raise ValueError(
+                "messages aggregate text must contain at most "
+                f"{MAX_AGGREGATE_TEXT_CHARACTERS} characters"
+            )
+
+    # Do no sanitization or regex scanning until every accepted message has
+    # passed shallow validation and the aggregate text budget is known safe.
+    sanitized_room = _sanitize_display(room)
+    if not sanitized_room:
+        raise ValueError("room must contain displayable characters")
+
+    category_counts = {category.value: 0 for category in ScanCategory}
+    severity_counts = {severity.value: 0 for severity in Severity}
+    examples: dict[str, list[dict[str, object]]] = {category.value: [] for category in ScanCategory}
+    sequences: list[int] = []
+    signed_count = 0
+
+    for index, message in enumerate(messages):
+        seq = message.get("seq")
+        sender = message.get("from")
+        text = message.get("text")
+        sanitized_sender = _sanitize_display(sender)
+        if not sanitized_sender:
+            raise ValueError(f"message {index} from must contain displayable characters")
 
         sequences.append(seq)
         if _is_signed(message):
