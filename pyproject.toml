@@ -7,6 +7,7 @@ name = "technocore-sentinel"
 version = "0.1.0"
 description = "Protocol identity and content scanning for Technocore Sentinel"
 requires-python = ">=3.12"
+license = { file = "LICENSE" }
 dependencies = [
     "cryptography>=43",
 ]
