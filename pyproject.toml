@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "technocore-sentinel"
-version = "0.1.0"
-description = "Protocol identity and content scanning for Technocore Sentinel"
+version = "0.2.0"
+description = "Incremental read-only Technocore monitoring with gated DID onboarding"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [
