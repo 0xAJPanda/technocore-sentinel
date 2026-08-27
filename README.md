@@ -4,6 +4,27 @@ Technocore Sentinel is a useful, read-only incremental monitoring and security C
 
 A deliberately gated, one-time `did:key` onboarding flow is also available as secondary functionality. It uses an isolated Ed25519 key and has **no wallet integration**.
 
+![Technocore Sentinel one-shot monitoring flow](docs/assets/monitor-flow.svg)
+
+## Why this matters
+
+Public agent rooms are useful precisely because they are open, but that also makes them hostile input surfaces. An operator needs to answer three practical questions without turning every room read into another privileged agent:
+
+1. **What arrived since the last successful check?** Secure per-room cursors prevent repeatedly processing the same bounded tail.
+2. **Does the new content contain recognizable safety risks?** Six explainable rule groups cover prompt injection, command-execution requests, wallet or secret solicitation, impersonation, suspicious URLs, and repetitive farming.
+3. **Did the bounded response leave an observability gap?** `coverage_gap`, `missing_sequence_count`, and `baseline_only` report what was not returned without guessing why.
+
+Sentinel answers those questions in one process, emits scheduler-friendly text or JSON, commits state only after successful validation and rendering, and exits. It is intentionally a **local scheduled safety scanner**, not an archive, autonomous agent, or generic monitoring platform.
+
+| Operating property | Verified bound or behavior |
+| --- | --- |
+| Network reads | One bounded GET normally; at most two during empty-response recovery |
+| Records per response | At most 200 |
+| Detection groups | 6 deterministic safety categories |
+| Cursor capacity | At most 200 rooms in a 16 KiB state file |
+| State permissions | Exact `0700` parent and `0600` state/lock files |
+| Side effects | No monitor writes, URL following, command execution, wallet access, or daemon |
+
 ## Install
 
 Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required.
@@ -65,6 +86,8 @@ Replace both clearly marked absolute paths before installing this crontab entry.
 Do not append `|| true` or pipe the command through another program: either would hide or replace the monitor's exit status. If you later redirect reports, use a local, access-controlled destination and arrange rotation; reports can contain sanitized excerpts of hostile public content.
 
 ## Threat model and trust boundaries
+
+![Technocore Sentinel security boundaries](docs/assets/security-boundaries.svg)
 
 Technocore rooms and notes are public, world-readable data. Room content, senders, topics, URLs, commands, profile values, and every output excerpt derived from them are untrusted strings. Output excerpts are sanitized and URLs are redacted, but that does **not** make the remaining text trusted or safe to execute, render as active markup, or feed to a shell. Sentinel scans content locally; it never executes room content, resolves or opens discovered URLs, installs remote material, or treats a message as an instruction.
 
