@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from enum import Enum
 import ipaddress
 import re
+from typing import cast
 import unicodedata
 from urllib.parse import urlsplit
 
@@ -327,12 +328,35 @@ def _is_signed(message: Mapping[str, object]) -> bool:
     )
 
 
-def scan_room_payload(payload: object) -> dict[str, object]:
-    """Validate and summarize a Technocore JSON room response.
+def sanitize_display(text: str) -> str:
+    """Return the scanner's bounded, URL-redacted form of display text."""
 
-    Validation is intentionally shallow: only the top-level response and each
-    message record are inspected.  Unknown nested content is neither traversed
-    nor interpreted.
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    return _sanitize_display(text)
+
+
+def is_message_signed(message: Mapping[str, object]) -> bool:
+    """Return whether *message* exposes a recognized server signed marker.
+
+    This recognizes live/legacy marker shapes for reporting.  It does not
+    independently verify a live message's cryptographic signature.
+    """
+
+    return _is_signed(message)
+
+
+def validate_room_payload(
+    payload: object,
+) -> tuple[str, tuple[Mapping[str, object], ...]]:
+    """Validate a room payload without scanning message text.
+
+    Validation is shallow and applies the same message-count and aggregate-text
+    bounds as :func:`scan_room_payload`.  Message sequences must be positive and
+    strictly increasing.  Optional server metadata is checked against the
+    ordered records before any sanitization.  For an empty response, ``last_seq``
+    is a non-negative cursor echo when present.  The returned room name is
+    sanitized; message mappings remain read-only inputs for callers to scan.
     """
 
     if not isinstance(payload, Mapping):
@@ -345,16 +369,29 @@ def scan_room_payload(payload: object) -> dict[str, object]:
         raise ValueError("messages must be a list")
     if len(messages) > 200:
         raise ValueError("messages must contain at most 200 entries")
+    if "count" in payload:
+        count = payload["count"]
+        if (
+            isinstance(count, bool)
+            or not isinstance(count, int)
+            or count < 0
+            or count != len(messages)
+        ):
+            raise ValueError("count must be a non-negative integer equal to len(messages)")
 
     aggregate_text_characters = 0
+    validated_messages: list[Mapping[str, object]] = []
+    previous_message_seq = 0
     for index, message in enumerate(messages):
         if not isinstance(message, Mapping):
             raise ValueError(f"message {index} must be a mapping")
         seq = message.get("seq")
         sender = message.get("from")
         text = message.get("text")
-        if isinstance(seq, bool) or not isinstance(seq, int) or seq < 0:
-            raise ValueError(f"message {index} seq must be a non-negative integer")
+        if isinstance(seq, bool) or not isinstance(seq, int) or seq <= 0:
+            raise ValueError(f"message {index} seq must be a positive integer")
+        if seq <= previous_message_seq:
+            raise ValueError("message seq values must be strictly increasing")
         if not isinstance(sender, str) or not sender.strip() or len(sender) > 256:
             raise ValueError(f"message {index} from must be a non-empty string of at most 256 characters")
         if not isinstance(text, str) or len(text) > 100_000:
@@ -368,12 +405,62 @@ def scan_room_payload(payload: object) -> dict[str, object]:
                 "messages aggregate text must contain at most "
                 f"{MAX_AGGREGATE_TEXT_CHARACTERS} characters"
             )
+        validated_messages.append(message)
+        previous_message_seq = seq
 
-    # Do no sanitization or regex scanning until every accepted message has
-    # passed shallow validation and the aggregate text budget is known safe.
+    if validated_messages:
+        expected_first_seq = cast(int, validated_messages[0]["seq"])
+        expected_last_seq = cast(int, validated_messages[-1]["seq"])
+        for field, expected in (
+            ("first_seq", expected_first_seq),
+            ("last_seq", expected_last_seq),
+        ):
+            if field in payload:
+                value = payload[field]
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, int)
+                    or value <= 0
+                    or value != expected
+                ):
+                    raise ValueError(
+                        f"{field} must be a positive integer equal to the ordered {field} message"
+                    )
+    else:
+        if "first_seq" in payload and payload["first_seq"] is not None:
+            raise ValueError("first_seq must be None when messages is empty")
+        if "last_seq" in payload:
+            last_seq = payload["last_seq"]
+            if (
+                isinstance(last_seq, bool)
+                or not isinstance(last_seq, int)
+                or last_seq < 0
+            ):
+                raise ValueError(
+                    "last_seq must be a non-negative integer cursor when messages is empty"
+                )
+
+    # Do no sanitization until every accepted message has passed shallow
+    # validation and the aggregate text budget is known safe.
     sanitized_room = _sanitize_display(room)
     if not sanitized_room:
         raise ValueError("room must contain displayable characters")
+    for index, message in enumerate(validated_messages):
+        if not _sanitize_display(cast(str, message["from"])):
+            raise ValueError(f"message {index} from must contain displayable characters")
+
+    return sanitized_room, tuple(validated_messages)
+
+
+def scan_room_payload(payload: object) -> dict[str, object]:
+    """Validate and summarize a Technocore JSON room response.
+
+    Validation is intentionally shallow: only the top-level response and each
+    message record are inspected.  Unknown nested content is neither traversed
+    nor interpreted.
+    """
+
+    sanitized_room, messages = validate_room_payload(payload)
 
     category_counts = {category.value: 0 for category in ScanCategory}
     severity_counts = {severity.value: 0 for severity in Severity}
@@ -381,13 +468,11 @@ def scan_room_payload(payload: object) -> dict[str, object]:
     sequences: list[int] = []
     signed_count = 0
 
-    for index, message in enumerate(messages):
-        seq = message.get("seq")
-        sender = message.get("from")
-        text = message.get("text")
+    for message in messages:
+        seq = cast(int, message.get("seq"))
+        sender = cast(str, message.get("from"))
+        text = cast(str, message.get("text"))
         sanitized_sender = _sanitize_display(sender)
-        if not sanitized_sender:
-            raise ValueError(f"message {index} from must contain displayable characters")
 
         sequences.append(seq)
         if _is_signed(message):
@@ -410,8 +495,8 @@ def scan_room_payload(payload: object) -> dict[str, object]:
 
     return {
         "room": sanitized_room,
-        "first_seq": min(sequences) if sequences else None,
-        "last_seq": max(sequences) if sequences else None,
+        "first_seq": sequences[0] if sequences else None,
+        "last_seq": sequences[-1] if sequences else None,
         "scanned_count": len(messages),
         "signed_count": signed_count,
         "unsigned_count": len(messages) - signed_count,
