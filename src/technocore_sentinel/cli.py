@@ -16,6 +16,7 @@ import sys
 from typing import Any, Callable, Sequence, TextIO
 
 from .client import SubmitAuthorization, TechnocoreClient
+from .monitor import monitor_room_payload
 from .identity import (
     create_identity,
     derive_did_key,
@@ -33,6 +34,7 @@ from .identity import (
 DEFAULT_KEY_FILE = "state/identity.key"
 DEFAULT_NONCE_FILE = "state/nonce.json"
 DEFAULT_RECEIPT_FILE = "state/receipt.json"
+DEFAULT_MONITOR_STATE_FILE = "state/monitor.json"
 
 
 def _public_identity(seed: bytes) -> dict[str, str]:
@@ -42,18 +44,32 @@ def _public_identity(seed: bytes) -> dict[str, str]:
 
 _STATE_LOCK = ".introduce.lock"
 _STATE_JOURNAL = ".introduce.journal"
+_MONITOR_LOCK = ".monitor.lock"
 _MAX_STATE_BYTES = 16 * 1024
+_MAX_MONITOR_ROOMS = 200
+_SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2}
 
 
-def _validate_state_file(descriptor: int, label: str) -> None:
+def _validate_state_file(descriptor: int, label: str, *, exact_mode: int | None = None) -> None:
     status = os.fstat(descriptor)
-    if not stat.S_ISREG(status.st_mode) or stat.S_IMODE(status.st_mode) & 0o077:
+    mode = stat.S_IMODE(status.st_mode)
+    if not stat.S_ISREG(status.st_mode) or (mode != exact_mode if exact_mode is not None else mode & 0o077):
         raise ValueError(f"{label} must be a secure regular file")
 
 
-def _read_json_at(parent_descriptor: int, name: str, label: str) -> dict[str, object] | None:
+def _read_json_at(
+    parent_descriptor: int,
+    name: str,
+    label: str,
+    *,
+    exact_mode: int | None = None,
+) -> dict[str, object] | None:
     try:
-        descriptor = os.open(name, _open_flags(os.O_RDONLY), dir_fd=parent_descriptor)
+        descriptor = os.open(
+            name,
+            _open_flags(os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)),
+            dir_fd=parent_descriptor,
+        )
     except FileNotFoundError:
         return None
     except OSError as error:
@@ -61,7 +77,7 @@ def _read_json_at(parent_descriptor: int, name: str, label: str) -> dict[str, ob
             raise ValueError(f"{label} must not be a symlink") from error
         raise
     try:
-        _validate_state_file(descriptor, label)
+        _validate_state_file(descriptor, label, exact_mode=exact_mode)
         data = os.read(descriptor, _MAX_STATE_BYTES + 1)
         if len(data) > _MAX_STATE_BYTES:
             raise ValueError(f"invalid {label}")
@@ -76,10 +92,29 @@ def _read_json_at(parent_descriptor: int, name: str, label: str) -> dict[str, ob
     return payload
 
 
-def _check_target_at(parent_descriptor: int, name: str, label: str) -> None:
-    """Reject existing symlink, special, or over-permissive targets."""
+def _check_target_at(
+    parent_descriptor: int,
+    name: str,
+    label: str,
+    *,
+    exact_mode: int | None = None,
+) -> None:
+    """Reject existing symlink, special, or insecure targets."""
     try:
-        descriptor = os.open(name, _open_flags(os.O_RDONLY), dir_fd=parent_descriptor)
+        status = os.stat(name, dir_fd=parent_descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(status.st_mode):
+        raise ValueError(f"{label} must not be a symlink")
+    mode = stat.S_IMODE(status.st_mode)
+    if not stat.S_ISREG(status.st_mode) or (mode != exact_mode if exact_mode is not None else mode & 0o077):
+        raise ValueError(f"{label} must be a secure regular file")
+    try:
+        descriptor = os.open(
+            name,
+            _open_flags(os.O_RDONLY | getattr(os, "O_NONBLOCK", 0)),
+            dir_fd=parent_descriptor,
+        )
     except FileNotFoundError:
         return
     except OSError as error:
@@ -87,7 +122,7 @@ def _check_target_at(parent_descriptor: int, name: str, label: str) -> None:
             raise ValueError(f"{label} must not be a symlink") from error
         raise
     try:
-        _validate_state_file(descriptor, label)
+        _validate_state_file(descriptor, label, exact_mode=exact_mode)
     finally:
         os.close(descriptor)
 
@@ -195,9 +230,10 @@ def _locked_state(nonce_path: str, receipt_path: str) -> Iterator[tuple[int, str
     lock_descriptor = -1
     try:
         os.fchmod(parent_descriptor, 0o700)
+        _check_target_at(parent_descriptor, _STATE_LOCK, "state lock")
         lock_descriptor = os.open(
             _STATE_LOCK,
-            _open_flags(os.O_RDWR | os.O_CREAT),
+            _open_flags(os.O_RDWR | os.O_CREAT | getattr(os, "O_NONBLOCK", 0)),
             0o600,
             dir_fd=parent_descriptor,
         )
@@ -224,6 +260,199 @@ def _commit_state(
     journal: dict[str, object] = {"nonce": nonce_payload, "receipt": receipt_payload}
     _write_json_at(parent_descriptor, _STATE_JOURNAL, journal, "state journal")
     _recover_state(parent_descriptor, nonce_name, receipt_name)
+
+
+def _validate_monitor_state(payload: dict[str, object] | None) -> dict[str, int]:
+    if payload is None:
+        return {}
+    version = payload.get("version")
+    if set(payload) != {"rooms", "version"} or version != 1 or isinstance(version, bool):
+        raise ValueError("invalid monitor state")
+    rooms = payload.get("rooms")
+    if not isinstance(rooms, dict) or len(rooms) > _MAX_MONITOR_ROOMS:
+        raise ValueError("invalid monitor state")
+    validated: dict[str, int] = {}
+    for room, cursor in rooms.items():
+        try:
+            TechnocoreClient._name(room, "room")
+        except ValueError as error:
+            raise ValueError("invalid monitor state") from error
+        if isinstance(cursor, bool) or not isinstance(cursor, int) or cursor < 0:
+            raise ValueError("invalid monitor state")
+        validated[room] = cursor
+    return validated
+
+
+@contextmanager
+def _locked_monitor_state(state_path: str | os.PathLike[str]) -> Iterator[tuple[int, str, dict[str, int]]]:
+    parent, state_name = _key_location(state_path)
+    if state_name in {_MONITOR_LOCK, _STATE_LOCK, _STATE_JOURNAL}:
+        raise ValueError("monitor state filename must be distinct from transaction files")
+    parent_descriptor = _open_parent(parent, create=True)
+    lock_descriptor = -1
+    try:
+        os.fchmod(parent_descriptor, 0o700)
+        _check_target_at(parent_descriptor, state_name, "monitor state", exact_mode=0o600)
+        _check_target_at(parent_descriptor, _MONITOR_LOCK, "monitor lock")
+        lock_descriptor = os.open(
+            _MONITOR_LOCK,
+            _open_flags(os.O_RDWR | os.O_CREAT | getattr(os, "O_NONBLOCK", 0)),
+            0o600,
+            dir_fd=parent_descriptor,
+        )
+        _validate_state_file(lock_descriptor, "monitor lock")
+        os.fchmod(lock_descriptor, 0o600)
+        fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+        _check_target_at(parent_descriptor, state_name, "monitor state", exact_mode=0o600)
+        rooms = _validate_monitor_state(
+            _read_json_at(parent_descriptor, state_name, "monitor state", exact_mode=0o600)
+        )
+        yield parent_descriptor, state_name, rooms
+    finally:
+        if lock_descriptor >= 0:
+            os.close(lock_descriptor)
+        os.close(parent_descriptor)
+
+
+def _filter_monitor_report(report: dict[str, object], minimum_severity: str) -> dict[str, object]:
+    findings = report.get("findings")
+    raw_categories = report.get("category_counts")
+    if not isinstance(findings, list) or not isinstance(raw_categories, dict):
+        raise ValueError("invalid monitor report")
+    threshold = _SEVERITY_RANK[minimum_severity]
+    visible: list[dict[str, object]] = []
+    severity_counts = {severity: 0 for severity in _SEVERITY_RANK}
+    category_counts = {category: 0 for category in raw_categories}
+    for finding in findings:
+        if not isinstance(finding, dict):
+            raise ValueError("invalid monitor report finding")
+        severity = finding.get("severity")
+        category = finding.get("category")
+        if severity not in _SEVERITY_RANK or not isinstance(category, str) or category not in category_counts:
+            raise ValueError("invalid monitor report finding")
+        if _SEVERITY_RANK[severity] >= threshold:
+            visible.append(finding)
+            severity_counts[severity] += 1
+            category_counts[category] += 1
+    return {
+        **report,
+        "minimum_severity": minimum_severity,
+        "findings": visible,
+        "severity_counts": severity_counts,
+        "category_counts": category_counts,
+    }
+
+
+def _render_monitor_report(report: dict[str, object]) -> str:
+    severity = report["severity_counts"]
+    categories = report["category_counts"]
+    assert isinstance(severity, dict) and isinstance(categories, dict)
+    lines = [
+        f"room: {report['room']}",
+        f"cursor: {report['previous_seq']} -> {report['next_seq']} ({report['cursor_status']})",
+        f"minimum severity: {report['minimum_severity']}",
+        f"new messages: {report['new_message_count']}",
+        f"server-signed markers: {report['server_signed_count']}; unsigned: {report['unsigned_count']}",
+        "severity: " + ", ".join(f"{key}={value}" for key, value in severity.items()),
+        "categories: " + ", ".join(f"{key}={value}" for key, value in categories.items()),
+    ]
+    findings = report["findings"]
+    assert isinstance(findings, list)
+    for finding in findings:
+        assert isinstance(finding, dict)
+        lines.append(
+            f"finding: seq={finding['seq']} from={finding['from']} severity={finding['severity']} "
+            f"category={finding['category']} rule={finding['rule']} excerpt={finding['excerpt']}"
+        )
+    if report["baseline_only"]:
+        lines.append("warning: baseline only; earlier room history may not be covered.")
+    if report["coverage_gap"]:
+        lines.append(f"warning: coverage gap; missing sequences: {report['missing_sequence_count']}.")
+    if report["cursor_recovered"]:
+        lines.append(f"warning: cursor recovery reset stale cursor {report['recovered_from_seq']} to {report['next_seq']}.")
+    lines.append("Findings are deterministic heuristics; all displayed remote content remains untrusted data.")
+    return "\n".join(lines)
+
+
+def _monitor_cycle(
+    room: str,
+    state_path: str,
+    minimum_severity: str,
+    output_format: str,
+    client_factory: Callable[[], TechnocoreClient],
+) -> str:
+    TechnocoreClient._name(room, "room")
+    with _locked_monitor_state(state_path) as (parent_descriptor, state_name, rooms):
+        previous_seq = rooms.get(room, 0)
+        if room not in rooms and len(rooms) >= _MAX_MONITOR_ROOMS:
+            raise ValueError("monitor state room limit exceeded")
+        client = client_factory()
+        payload = client.get_room(room, limit=200, since=None if previous_seq == 0 else previous_seq)
+        report = monitor_room_payload(payload, previous_seq)
+        incremental_messages = payload["messages"]
+        if not isinstance(incremental_messages, list):
+            raise ValueError("monitor payload produced invalid messages")
+        report_previous_seq = report.get("previous_seq")
+        next_seq = report.get("next_seq")
+        if (
+            isinstance(report_previous_seq, bool)
+            or not isinstance(report_previous_seq, int)
+            or report_previous_seq < 0
+            or report_previous_seq != previous_seq
+            or isinstance(next_seq, bool)
+            or not isinstance(next_seq, int)
+            or next_seq < 0
+        ):
+            raise ValueError("monitor report produced an invalid cursor")
+        if previous_seq == 0:
+            cursor_status = "baseline"
+        elif next_seq > previous_seq:
+            cursor_status = "advanced"
+        elif next_seq == previous_seq:
+            cursor_status = "healthy_idle"
+        else:
+            raise ValueError("monitor report cursor regressed")
+        recovered = False
+        recovered_from: int | None = None
+
+        if previous_seq > 0 and not incremental_messages:
+            head_payload = client.get_room(room, limit=200, since=None)
+            head_report = monitor_room_payload(head_payload, 0)
+            head_cursor = head_report["next_seq"]
+            if isinstance(head_cursor, bool) or not isinstance(head_cursor, int) or head_cursor < 0:
+                raise ValueError("monitor head report produced an invalid cursor")
+            if head_cursor == previous_seq:
+                cursor_status = "healthy_idle"
+            elif head_cursor < previous_seq:
+                report = head_report
+                cursor_status = "recovered_baseline"
+                recovered = True
+                recovered_from = previous_seq
+            else:
+                raise RuntimeError("empty incremental response contradicts newer room head")
+
+        report.update(
+            cursor_status=cursor_status,
+            cursor_recovered=recovered,
+            recovered_from_seq=recovered_from,
+        )
+        visible_report = _filter_monitor_report(report, minimum_severity)
+        rendered = json.dumps(visible_report, sort_keys=True) if output_format == "json" else _render_monitor_report(visible_report)
+
+        next_seq = report["next_seq"]
+        if isinstance(next_seq, bool) or not isinstance(next_seq, int) or next_seq < 0:
+            raise ValueError("monitor report produced an invalid cursor")
+        updated_rooms = dict(rooms)
+        updated_rooms[room] = next_seq
+        if len(updated_rooms) > _MAX_MONITOR_ROOMS:
+            raise ValueError("monitor state room limit exceeded")
+        _write_json_at(
+            parent_descriptor,
+            state_name,
+            {"rooms": updated_rooms, "version": 1},
+            "monitor state",
+        )
+    return rendered
 
 
 def _render_digest(digest: dict[str, object]) -> str:
@@ -264,6 +493,12 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--limit", type=int, default=200)
     scan.add_argument("--format", choices=("text", "json"), default="text")
 
+    monitor = subparsers.add_parser("monitor", help="GET and report one incremental room window")
+    monitor.add_argument("--room", default="lobby")
+    monitor.add_argument("--state-file", default=DEFAULT_MONITOR_STATE_FILE)
+    monitor.add_argument("--format", choices=("text", "json"), default="text")
+    monitor.add_argument("--min-severity", choices=("low", "medium", "high"), default="low")
+
     publish = subparsers.add_parser("publish-profile", help="plan or publish a public DID profile")
     publish.add_argument("--key-file", default=DEFAULT_KEY_FILE)
     publish.add_argument("--value")
@@ -295,6 +530,11 @@ def run(
     if args.command == "scan":
         digest = client_factory().scan_room(args.room, limit=args.limit)
         print(json.dumps(digest, sort_keys=True) if args.format == "json" else _render_digest(digest), file=stdout)
+        return 0
+
+    if args.command == "monitor":
+        rendered = _monitor_cycle(args.room, args.state_file, args.min_severity, args.format, client_factory)
+        print(rendered, file=stdout)
         return 0
 
     if args.command == "publish-profile":

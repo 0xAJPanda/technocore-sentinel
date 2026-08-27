@@ -243,7 +243,7 @@ class TechnocoreClient:
     @staticmethod
     def default_profile_value(did: str) -> str:
         return (
-            f"did={did} name:hermes-sentinel purpose:read-only safety/activity digest "
+            f"did={did} name:technocore-sentinel purpose:read-only safety/activity digest "
             "policy:never executes room content experiment:independent"
         )
 

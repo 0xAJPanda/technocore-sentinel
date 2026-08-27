@@ -104,6 +104,14 @@ def note(value: str) -> bytes:
 
 
 class ClientValidationTests(unittest.TestCase):
+    def test_default_profile_branding_is_technocore_sentinel(self) -> None:
+        value = TechnocoreClient.default_profile_value("did:key:zExample")
+        self.assertEqual(
+            value,
+            "did=did:key:zExample name:technocore-sentinel purpose:read-only safety/activity digest "
+            "policy:never executes room content experiment:independent",
+        )
+
     def test_origin_is_strictly_canonical_and_names_are_local(self) -> None:
         for origin in (
             "http://technocore.chat",
