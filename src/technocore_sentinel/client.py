@@ -72,7 +72,7 @@ class MessageReceipt:
     did: str
     room: str
     seq: int
-    timestamp: str | None
+    timestamp: str
     nonce: str
     text: str
 
@@ -318,8 +318,26 @@ class TechnocoreClient:
             ),
             "message",
         )
-        if response.get("posted") is not True:
-            raise ClientError("message response did not confirm posted=true")
+        posted = response.get("posted")
+        if not isinstance(posted, Mapping) or set(posted) != {"seq", "ts", "from", "text", "nonce"}:
+            raise ClientError("message response lacks an exact posted record")
+        seq = posted.get("seq")
+        timestamp = posted.get("ts")
+        nonce = posted.get("nonce")
+        if (
+            isinstance(seq, bool)
+            or not isinstance(seq, int)
+            or seq <= prior_last_seq
+            or not isinstance(timestamp, str)
+            or not timestamp
+            or posted.get("from") != signed.did
+            or posted.get("text") != signed.cleaned_text
+            or isinstance(nonce, bool)
+            or not isinstance(nonce, int)
+            or not 1 <= nonce <= _MAX_LIVE_NONCE
+            or str(nonce) != signed.nonce
+        ):
+            raise ClientError("message posted record did not exactly match signed payload")
         payload = self.get_room(room, limit=200, since=prior_last_seq)
         messages = payload["messages"]
         assert isinstance(messages, list)
@@ -327,20 +345,16 @@ class TechnocoreClient:
             message
             for message in messages
             if isinstance(message, Mapping)
-            and message.get("from") == signed.did
-            and message.get("text") == signed.text
-            and isinstance(message.get("nonce"), int)
+            and message.get("seq") == seq
+            and not isinstance(message.get("seq"), bool)
+            and message.get("from") == posted["from"]
+            and message.get("text") == posted["text"]
+            and message.get("nonce") == nonce
             and not isinstance(message.get("nonce"), bool)
-            and 1 <= message["nonce"] <= _MAX_LIVE_NONCE
-            and str(message["nonce"]) == signed.nonce
         ]
         if len(matches) != 1:
             raise ClientError("signed message exact readback verification failed")
         match = matches[0]
-        seq = match.get("seq")
-        if isinstance(seq, bool) or not isinstance(seq, int) or seq <= prior_last_seq:
-            raise ClientError("verified message lacks a valid advancing sequence")
-        timestamp = match.get("ts")
-        if timestamp is not None and not isinstance(timestamp, str):
-            raise ClientError("verified message timestamp is invalid")
-        return MessageReceipt(signed.did, room, seq, timestamp, signed.nonce, signed.text)
+        if match.get("ts") != timestamp:
+            raise ClientError("signed message readback timestamp does not match posted record")
+        return MessageReceipt(signed.did, room, seq, timestamp, signed.nonce, signed.cleaned_text)
