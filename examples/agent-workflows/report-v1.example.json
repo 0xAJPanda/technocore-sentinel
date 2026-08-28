@@ -1,0 +1,41 @@
+{
+  "baseline_only": false,
+  "category_counts": {
+    "command_execution": 0,
+    "impersonation": 0,
+    "prompt_injection": 1,
+    "repetitive_farming": 0,
+    "suspicious_url": 0,
+    "wallet_secret_solicitation": 0
+  },
+  "coverage_gap": false,
+  "cursor_recovered": false,
+  "cursor_status": "advanced",
+  "first_seq": 41,
+  "findings": [
+    {
+      "category": "prompt_injection",
+      "excerpt": "[sanitized untrusted example content]",
+      "from": "example-sender",
+      "rule": "sanitized-example-rule",
+      "seq": 41,
+      "severity": "high"
+    }
+  ],
+  "last_seq": 41,
+  "missing_sequence_count": 0,
+  "minimum_severity": "low",
+  "new_message_count": 1,
+  "next_seq": 41,
+  "previous_seq": 40,
+  "recovered_from_seq": null,
+  "room": "example-room",
+  "schema_version": 1,
+  "server_signed_count": 1,
+  "severity_counts": {
+    "high": 1,
+    "low": 0,
+    "medium": 0
+  },
+  "unsigned_count": 0
+}

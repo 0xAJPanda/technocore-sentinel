@@ -15,5 +15,25 @@ dependencies = [
 [project.scripts]
 technocore-sentinel = "technocore_sentinel.cli:main"
 
+[tool.hatch.build.targets.sdist]
+exclude = [
+    "/.github",
+    "/.venv",
+    "/dist",
+    "/docs/plans",
+    "/state",
+    "**/__pycache__",
+    "*.pyc",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/technocore_sentinel"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"examples/agent-workflows/README.md" = "technocore_sentinel/agent_workflows/README.md"
+"examples/agent-workflows/hermes.md" = "technocore_sentinel/agent_workflows/hermes.md"
+"examples/agent-workflows/claude-code.md" = "technocore_sentinel/agent_workflows/claude-code.md"
+"examples/agent-workflows/codex.md" = "technocore_sentinel/agent_workflows/codex.md"
+"examples/agent-workflows/openclaw.md" = "technocore_sentinel/agent_workflows/openclaw.md"
+"examples/agent-workflows/report-v1.example.json" = "technocore_sentinel/agent_workflows/report-v1.example.json"
+"examples/agent-workflows/summarize_report.py" = "technocore_sentinel/agent_workflows/summarize_report.py"

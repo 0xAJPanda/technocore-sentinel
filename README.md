@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD013 -->
+
 # Technocore Sentinel
 
 Technocore Sentinel is a useful, read-only incremental monitoring and security CLI for public Technocore rooms. Each monitor run performs a bounded, origin-pinned incremental GET, scans only messages newer than a securely stored per-room cursor, reports deterministic safety findings and bounded-window coverage status, and exits. An empty incremental response may require one additional bounded head read to detect and recover a cursor beyond the current room head. It is designed for one-shot use, cron/systemd scheduling, dashboard ingestion, and alert bridges—not as a daemon.
@@ -23,7 +25,7 @@ Sentinel answers those questions in one process, emits scheduler-friendly text o
 | Detection groups | 6 deterministic safety categories |
 | Cursor capacity | At most 200 rooms in a 16 KiB state file |
 | State permissions | Exact `0700` parent and `0600` state/lock files |
-| Side effects | No monitor writes, URL following, command execution, wallet access, or daemon |
+| Side effects | Local cursor-state writes only; no Technocore writes, URL following, command execution, wallet access, or daemon |
 
 ## Install
 
@@ -33,6 +35,37 @@ Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required.
 uv sync
 uv run technocore-sentinel --help
 ```
+
+## Use from an agent — no MCP required
+
+This change adds a versioned, CLI/JSON-first agent contract. An agent should discover the contract before it runs a monitor cycle. Contract discovery is local and network-free:
+
+```sh
+uv run technocore-sentinel contract
+```
+
+Then run one bounded JSON monitor cycle with an operator-chosen absolute state path:
+
+```sh
+uv run technocore-sentinel monitor --room lobby \
+  --state-file /ABSOLUTE/PRIVATE/PATH/monitor.json --format json
+```
+
+For a local checkout, use the two `uv run` commands above from the repository root. After a verified PyPI release exists, a zero-permanent-install invocation can use this pinned template:
+
+```sh
+uvx --from 'technocore-sentinel==RELEASE' technocore-sentinel contract
+uvx --from 'technocore-sentinel==RELEASE' technocore-sentinel monitor \
+  --room lobby --state-file /ABSOLUTE/PRIVATE/PATH/monitor.json --format json
+```
+
+`RELEASE` is a placeholder, not a published version claim. Replace it only with an exact, verified PyPI release. Do not install or execute a mutable branch such as `main` in an agent workflow. The `uvx` route cannot be verified until such a release exists.
+
+Consumers must require `schema_version == 1` before using a report. Version 1 is additive-only: consumers may ignore unknown fields within version 1, but must fail closed on an unknown schema version. Any breaking change requires a new schema version. A successful report can contain findings or coverage gaps and still exit `0`; network, validation, secure-state, and rendering failures exit nonzero.
+
+MCP is not required and is not currently shipped. A future MCP integration may be offered only as an optional wrapper around the same JSON contract.
+
+See the [agent workflow guide](examples/agent-workflows/README.md) and the host-specific templates for [Hermes](examples/agent-workflows/hermes.md), [Claude Code](examples/agent-workflows/claude-code.md), [Codex](examples/agent-workflows/codex.md), and [OpenClaw](examples/agent-workflows/openclaw.md).
 
 The network client is pinned to exactly `https://technocore.chat`, uses the standard-library `urllib` stack with normal TLS certificate verification, rejects redirects, requests identity encoding, applies a 20-second timeout, and caps responses at 1 MiB. The monitor is GET-only and never follows URLs found in messages. It does not support arbitrary origins.
 

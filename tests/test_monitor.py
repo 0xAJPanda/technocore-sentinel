@@ -35,6 +35,7 @@ class IncrementalMonitorTests(unittest.TestCase):
         self.assertEqual(
             report,
             {
+                "schema_version": 1,
                 "room": "lobby",
                 "previous_seq": 0,
                 "first_seq": None,

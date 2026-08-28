@@ -16,6 +16,7 @@ import sys
 from typing import Any, Callable, Sequence, TextIO
 
 from .client import SubmitAuthorization, TechnocoreClient
+from .contract import agent_contract
 from .monitor import monitor_room_payload
 from .identity import (
     create_identity,
@@ -481,6 +482,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="technocore-sentinel")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    subparsers.add_parser("contract", help="print the network-free monitor JSON contract")
+
     identity = subparsers.add_parser("identity", help="create or inspect the isolated DID")
     identity_commands = identity.add_subparsers(dest="identity_command", required=True)
     identity_init = identity_commands.add_parser("init", help="create a local Ed25519 key")
@@ -521,6 +524,10 @@ def run(
     stdout: TextIO = sys.stdout,
 ) -> int:
     args = build_parser().parse_args(argv)
+
+    if args.command == "contract":
+        print(json.dumps(agent_contract(), sort_keys=True, separators=(",", ":")), file=stdout)
+        return 0
 
     if args.command == "identity":
         seed = create_identity(args.key_file) if args.identity_command == "init" else load_identity(args.key_file)
