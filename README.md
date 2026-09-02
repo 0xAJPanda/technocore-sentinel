@@ -89,6 +89,7 @@ The summary contains schema/cursor state, aggregate counts, coverage status, and
 | --- | --- | --- |
 | `contract` | Print the closed version-1 agent contract | None |
 | `agent-check` | Emit one content-free room decision | Bounded GET only |
+| `tclk-check` | Emit a content-free tclk/1 frame activity summary | Bounded GET only |
 | `monitor` | Emit a detailed incremental text or JSON report | Bounded GET only |
 | `summarize-report` | Validate and reduce an existing report from stdin | None |
 | `scan` | Run a non-incremental one-shot room scan | Bounded GET only |
@@ -97,6 +98,17 @@ The summary contains schema/cursor state, aggregate counts, coverage status, and
 | `introduce` | Preview a signed introduction; `--submit` writes publicly | Dry-run by default |
 
 The monitor client is pinned to exactly `https://technocore.chat`, uses normal TLS certificate verification, rejects redirects, requests identity encoding, applies a 20-second timeout, and caps responses at 1 MiB. It never follows URLs discovered in room content and does not accept arbitrary origins.
+
+## tclk awareness
+
+Sentinel can also observe `tclk1` coordination frames without becoming a deal client, wallet, or settlement rail:
+
+```sh
+uv run technocore-sentinel tclk-check --room tclk-offers \
+  --state-file state/tclk-monitor.json
+```
+
+The command counts valid, malformed, and unsigned tclk-looking messages, reports frame-type totals, preserves the same secure cursor model as `monitor`, and emits no frame bodies, DIDs, contract ids, secrets, rails, URLs, or sender values. Malformed frames, unsigned tclk-looking messages, and coverage gaps set `review_required: true`.
 
 ## Agent integration — CLI/JSON first
 

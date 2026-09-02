@@ -34,6 +34,7 @@ docs/plans/2026-08-29-technocore-client-contract-v1.schema.json	intended-release
 docs/plans/2026-08-29-technocore-protocol-baseline.md	intended-release-input
 docs/plans/2026-08-29-technocore-signalbox-implementation.md	intended-release-input
 docs/plans/2026-08-29-technocore-signalbox-microtasks.md	intended-release-input
+docs/plans/2026-09-02-flop-participation-and-tclk-check.md	intended-release-input
 docs/plans/assets/technocore-operator-loop-concept.png	intended-release-input
 docs/plans/assets/technocore-operator-loop-concept.svg	intended-release-input
 examples/agent-workflows/README.md	separately-reviewed-workflow
@@ -48,6 +49,7 @@ src/technocore_sentinel/client.py	intended-release-input
 src/technocore_sentinel/contract.py	intended-release-input
 src/technocore_sentinel/naming.py	intended-release-input
 src/technocore_sentinel/protocol.py	intended-release-input
+src/technocore_sentinel/tclk.py	intended-release-input
 src/technocore_sentinel/transport.py	intended-release-input
 src/technocore_sentinel/workflow.py	intended-release-input
 tests/fixtures/compatibility/introduce_dry_run.json	intended-release-input
@@ -64,6 +66,7 @@ tests/test_client.py	intended-release-input
 tests/test_compatibility_manifest.py	intended-release-input
 tests/test_contract.py	intended-release-input
 tests/test_protocol.py	intended-release-input
+tests/test_tclk.py	intended-release-input
 tests/test_transport.py	intended-release-input
 tests/test_workflow.py	intended-release-input
 ```

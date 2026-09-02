@@ -18,6 +18,7 @@ from typing import Any, BinaryIO, Callable, Sequence, TextIO
 from .client import SubmitAuthorization, TechnocoreClient
 from .contract import monitor_contract
 from .monitor import monitor_room_payload
+from .tclk import summarize_tclk_room_payload
 from .workflow import render_summary, summarize_report, summarize_stdin
 from .identity import (
     create_identity,
@@ -462,6 +463,59 @@ def _monitor_cycle(
     return rendered
 
 
+def _tclk_cycle(
+    room: str,
+    state_path: str,
+    output_format: str,
+    client_factory: Callable[[], TechnocoreClient],
+) -> str:
+    """Run one bounded, read-only tclk awareness cycle."""
+
+    TechnocoreClient._name(room, "room")
+    with _locked_monitor_state(state_path) as (parent_descriptor, state_name, rooms):
+        previous_seq = rooms.get(room, 0)
+        if room not in rooms and len(rooms) >= _MAX_MONITOR_ROOMS:
+            raise ValueError("monitor state room limit exceeded")
+        payload = client_factory().get_room(
+            room,
+            limit=200,
+            since=None if previous_seq == 0 else previous_seq,
+        )
+        report = summarize_tclk_room_payload(payload, previous_seq)
+        next_seq = report["next_seq"]
+        if isinstance(next_seq, bool) or not isinstance(next_seq, int) or next_seq < 0:
+            raise ValueError("tclk report produced an invalid cursor")
+        updated_rooms = dict(rooms)
+        updated_rooms[room] = next_seq
+        if len(updated_rooms) > _MAX_MONITOR_ROOMS:
+            raise ValueError("monitor state room limit exceeded")
+        rendered = json.dumps(report, sort_keys=True) if output_format == "json" else _render_tclk_report(report)
+        _write_json_at(
+            parent_descriptor,
+            state_name,
+            {"rooms": updated_rooms, "version": 1},
+            "monitor state",
+        )
+    return rendered
+
+
+def _render_tclk_report(report: dict[str, object]) -> str:
+    frame_counts = report["frame_type_counts"]
+    assert isinstance(frame_counts, dict)
+    lines = [
+        f"room: {report['room']}",
+        f"sequence: {report['first_seq']}..{report['last_seq']} (previous {report['previous_seq']}, next {report['next_seq']})",
+        f"messages: {report['new_message_count']}",
+        f"tclk frames: {report['tclk_frame_count']} valid={report['valid_frame_count']} malformed={report['malformed_frame_count']} unsigned={report['unsigned_tclk_count']}",
+        "frame types: " + ", ".join(f"{key}={value}" for key, value in frame_counts.items()),
+        f"review required: {str(report['review_required']).lower()}",
+    ]
+    if report["coverage_gap"]:
+        lines.append(f"warning: coverage gap; missing sequences: {report['missing_sequence_count']}.")
+    lines.append("tclk awareness is read-only; no secrets, payment rails, wallet actions, or public writes are performed.")
+    return "\n".join(lines)
+
+
 def _render_digest(digest: dict[str, object]) -> str:
     lines = [
         f"room: {digest['room']}",
@@ -513,6 +567,11 @@ def build_parser() -> argparse.ArgumentParser:
     agent_check.add_argument("--state-file", default=DEFAULT_MONITOR_STATE_FILE)
     agent_check.add_argument("--min-severity", choices=("low", "medium", "high"), default="low")
 
+    tclk_check = subparsers.add_parser("tclk-check", help="GET and summarize tclk/1 room frames without acting on them")
+    tclk_check.add_argument("--room", default="tclk-offers")
+    tclk_check.add_argument("--state-file", default=DEFAULT_MONITOR_STATE_FILE)
+    tclk_check.add_argument("--format", choices=("text", "json"), default="json")
+
     subparsers.add_parser("summarize-report", help="validate a monitor report from stdin and emit a safe summary")
 
     publish = subparsers.add_parser("publish-profile", help="plan or publish a public DID profile")
@@ -542,7 +601,7 @@ def run(
     if args.command in ("publish-profile", "introduce") and args.submit:
         raise RuntimeError("compatibility quarantined")
 
-    if args.command in {"scan", "monitor", "agent-check"}:
+    if args.command in {"scan", "monitor", "agent-check", "tclk-check"}:
         TechnocoreClient._name(args.room, "room")
 
     if args.command == "contract":
@@ -571,6 +630,11 @@ def run(
 
     if args.command == "agent-check":
         rendered = _monitor_cycle(args.room, args.state_file, args.min_severity, "agent-json", client_factory)
+        print(rendered, file=stdout)
+        return 0
+
+    if args.command == "tclk-check":
+        rendered = _tclk_cycle(args.room, args.state_file, args.format, client_factory)
         print(rendered, file=stdout)
         return 0
 

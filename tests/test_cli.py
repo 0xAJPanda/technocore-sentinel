@@ -44,6 +44,7 @@ COMPATIBILITY_PARSER_PATHS = frozenset({
     ("scan",),
     ("monitor",),
     ("agent-check",),
+    ("tclk-check",),
     ("summarize-report",),
     ("publish-profile",),
     ("introduce",),
@@ -2746,6 +2747,97 @@ class SummarizeReportCLITests(unittest.TestCase):
             )
         self.assertEqual(output.getvalue(), "")
         self.assertNotIn(hostile, output.getvalue())
+
+
+class TclkCheckCLITests(unittest.TestCase):
+    LIVE_DID = "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp"
+
+    @staticmethod
+    def payload(*messages: dict[str, object], room: str = "tclk-offers") -> dict[str, object]:
+        return {"room": room, "count": len(messages), "messages": list(messages)}
+
+    @staticmethod
+    def frame(frame_type: str, **extra: object) -> str:
+        return "tclk1 " + json.dumps(
+            {"type": frame_type, **extra},
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    class Client:
+        def __init__(self, response: object) -> None:
+            self.response = response
+            self.calls: list[tuple[str, int, int | None]] = []
+
+        def get_room(self, room: str, *, limit: int, since: int | None = None) -> dict[str, object]:
+            self.calls.append((room, limit, since))
+            return self.response  # type: ignore[return-value]
+
+    def test_tclk_check_json_is_read_only_content_free_and_advances_cursor(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw_contract = "0x" + "a" * 64
+            client = self.Client(self.payload(
+                {
+                    "seq": 8,
+                    "from": self.LIVE_DID,
+                    "nonce": 1,
+                    "text": self.frame("offer", id=raw_contract),
+                },
+                {"seq": 9, "from": "anon", "text": "tclk1 {not json"},
+            ))
+            output = StringIO()
+
+            result = run(
+                ["tclk-check", "--state-file", str(root / "tclk.json")],
+                client_factory=lambda: client,  # type: ignore[arg-type]
+                stdout=output,
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(client.calls, [("tclk-offers", 200, None)])
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["tclk_frame_count"], 2)
+            self.assertEqual(report["valid_frame_count"], 1)
+            self.assertEqual(report["malformed_frame_count"], 1)
+            self.assertEqual(report["unsigned_tclk_count"], 1)
+            self.assertTrue(report["review_required"])
+            self.assertEqual((root / "tclk.json").read_text(), '{"rooms":{"tclk-offers":9},"version":1}\n')
+            rendered = output.getvalue()
+            self.assertNotIn(raw_contract, rendered)
+            self.assertNotIn(self.LIVE_DID, rendered)
+            self.assertNotIn("not json", rendered)
+
+    def test_tclk_check_uses_saved_cursor_and_text_output_names_boundaries(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "tclk.json"
+            state.write_text('{"rooms":{"tclk-offers":9},"version":1}\n')
+            state.chmod(0o600)
+            client = self.Client(self.payload(
+                {
+                    "seq": 10,
+                    "from": self.LIVE_DID,
+                    "nonce": 2,
+                    "text": self.frame("receipt"),
+                },
+            ))
+            output = StringIO()
+
+            result = run(
+                ["tclk-check", "--state-file", str(state), "--format", "text"],
+                client_factory=lambda: client,  # type: ignore[arg-type]
+                stdout=output,
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(client.calls, [("tclk-offers", 200, 9)])
+            text = output.getvalue()
+            self.assertIn("tclk frames: 1 valid=1 malformed=0 unsigned=0", text)
+            self.assertIn("payment rails", text)
+            self.assertIn("wallet actions", text)
+            self.assertIn("public writes", text)
+            self.assertEqual(json.loads(state.read_text())["rooms"]["tclk-offers"], 10)
 
 
 if __name__ == "__main__":
