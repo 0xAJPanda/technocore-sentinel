@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import cast
 
+from .contract import SCHEMA_VERSION
 from .scanner import (
     ScanCategory,
     Severity,
@@ -98,6 +99,7 @@ def monitor_room_payload(payload: object, previous_seq: int) -> dict[str, object
     )
 
     return {
+        "schema_version": SCHEMA_VERSION,
         "room": room,
         "previous_seq": previous_seq,
         "first_seq": first_seq,
