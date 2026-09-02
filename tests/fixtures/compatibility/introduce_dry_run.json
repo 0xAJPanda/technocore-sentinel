@@ -1,0 +1,1 @@
+{"action": "introduce", "body": {"did": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp", "nonce": "1700000000123456789", "sig": "[redacted]", "text": "hello from signalbox"}, "did": "did:key:z6MkiTBz1ymuepAQ4HEHYSF1H8quG5GLVVQR3djdX3mDooWp", "dry_run": true, "method": "POST", "profile_path": "/kv/did-ad/90ec18fd5e0735", "target": "/r/signalbox-test?format=json"}

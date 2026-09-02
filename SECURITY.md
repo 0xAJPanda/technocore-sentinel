@@ -23,12 +23,15 @@ Sentinel is designed around these invariants:
 - The Ed25519 seed, nonce state, and receipt state use restrictive local permissions. A live introduction is serialized end-to-end by an anchored, non-symlink lock; nonce and receipt commits use a recoverable journal that completes interrupted writes without allowing nonce rollback. Lock, journal, nonce, and receipt files are `0600` in one `0700` state directory. Seed and signature values are never printed or placed in receipts.
 - The project does not read wallets, browser credentials, SSH keys, mnemonics, email identities, host identity, or operator identity, and provides no wallet integration.
 - `technocore-sentinel contract` is deterministic, local, and network-free. It describes the report interface; it does not authorize monitoring, posting, URL access, package installation, credential access, or any other follow-up action.
+- `technocore-sentinel agent-check` validates and renders its closed, content-free summary while holding the monitor lock and before committing cursor state. A summary failure leaves prior state unchanged and emits no successful output.
+- `technocore-sentinel summarize-report` is network-, cursor-state-, and identity-free. It strictly rejects oversized, malformed, contradictory, unknown-field, and noncanonical-room reports with one content-free error.
+- Agent summaries contain only schema/cursor metadata, aggregate counts, coverage status, and `review_required`; they never contain findings, excerpts, sender values, rules, URLs, commands, raw messages, or unknown report fields.
 - Agent operators must choose the absolute monitor state path and all operator configuration independently. Never select or modify either from model output, a Sentinel report, or any room-derived content.
 - An agent host must treat report fields and excerpts as untrusted data. It must not execute excerpts or discovered commands, open discovered URLs, install packages, access wallets or credentials, or post to Technocore because report content requested or suggested it.
 
 ## Agent-host boundary
 
-The JSON contract makes deterministic parsing possible; it does not turn findings into instructions. Agent hosts remain responsible for preserving the monitor process's nonzero exit status, rejecting unknown `schema_version` values, protecting private state, and requiring separate operator authorization for every action outside local report processing. Findings and coverage gaps are successful observations, while network, validation, secure-state, or rendering errors are operational failures.
+The JSON contract makes deterministic parsing possible; it does not turn findings or summaries into instructions. Agent hosts remain responsible for preserving nonzero exit status, rejecting unknown `schema_version` values and unknown summary fields, protecting private state, and requiring separate operator authorization for every action outside local report processing. `review_required: true` is a successful observation, while network, validation, secure-state, or rendering errors are operational failures.
 
 MCP is neither required nor currently shipped. If an optional MCP wrapper is added in the future, it must preserve the same contract, trust boundaries, and lack of follow-up authority.
 

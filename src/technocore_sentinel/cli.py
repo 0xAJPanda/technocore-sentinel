@@ -13,11 +13,12 @@ from pathlib import Path
 import secrets
 import stat
 import sys
-from typing import Any, Callable, Sequence, TextIO
+from typing import Any, BinaryIO, Callable, Sequence, TextIO
 
 from .client import SubmitAuthorization, TechnocoreClient
-from .contract import agent_contract
+from .contract import monitor_contract
 from .monitor import monitor_room_payload
+from .workflow import render_summary, summarize_report, summarize_stdin
 from .identity import (
     create_identity,
     derive_did_key,
@@ -438,7 +439,12 @@ def _monitor_cycle(
             recovered_from_seq=recovered_from,
         )
         visible_report = _filter_monitor_report(report, minimum_severity)
-        rendered = json.dumps(visible_report, sort_keys=True) if output_format == "json" else _render_monitor_report(visible_report)
+        if output_format == "agent-json":
+            rendered = render_summary(summarize_report(visible_report))
+        elif output_format == "json":
+            rendered = json.dumps(visible_report, sort_keys=True)
+        else:
+            rendered = _render_monitor_report(visible_report)
 
         next_seq = report["next_seq"]
         if isinstance(next_seq, bool) or not isinstance(next_seq, int) or next_seq < 0:
@@ -502,6 +508,13 @@ def build_parser() -> argparse.ArgumentParser:
     monitor.add_argument("--format", choices=("text", "json"), default="text")
     monitor.add_argument("--min-severity", choices=("low", "medium", "high"), default="low")
 
+    agent_check = subparsers.add_parser("agent-check", help="GET and emit a content-free room safety summary")
+    agent_check.add_argument("--room", default="lobby")
+    agent_check.add_argument("--state-file", default=DEFAULT_MONITOR_STATE_FILE)
+    agent_check.add_argument("--min-severity", choices=("low", "medium", "high"), default="low")
+
+    subparsers.add_parser("summarize-report", help="validate a monitor report from stdin and emit a safe summary")
+
     publish = subparsers.add_parser("publish-profile", help="plan or publish a public DID profile")
     publish.add_argument("--key-file", default=DEFAULT_KEY_FILE)
     publish.add_argument("--value")
@@ -522,11 +535,23 @@ def run(
     *,
     client_factory: Callable[[], TechnocoreClient] = TechnocoreClient,
     stdout: TextIO = sys.stdout,
+    stdin: BinaryIO | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
 
+    if args.command in ("publish-profile", "introduce") and args.submit:
+        raise RuntimeError("compatibility quarantined")
+
+    if args.command in {"scan", "monitor", "agent-check"}:
+        TechnocoreClient._name(args.room, "room")
+
     if args.command == "contract":
-        print(json.dumps(agent_contract(), sort_keys=True, separators=(",", ":")), file=stdout)
+        print(json.dumps(monitor_contract(), sort_keys=True, separators=(",", ":")), file=stdout)
+        return 0
+
+    if args.command == "summarize-report":
+        binary_stdin = stdin if stdin is not None else sys.stdin.buffer
+        print(summarize_stdin(binary_stdin), file=stdout)
         return 0
 
     if args.command == "identity":
@@ -541,6 +566,11 @@ def run(
 
     if args.command == "monitor":
         rendered = _monitor_cycle(args.room, args.state_file, args.min_severity, args.format, client_factory)
+        print(rendered, file=stdout)
+        return 0
+
+    if args.command == "agent-check":
+        rendered = _monitor_cycle(args.room, args.state_file, args.min_severity, "agent-json", client_factory)
         print(rendered, file=stdout)
         return 0
 

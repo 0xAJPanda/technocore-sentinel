@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="760" viewBox="0 0 1440 760" role="img" aria-labelledby="title desc">
+  <title id="title">technocore-agent operator loop concept</title>
+  <desc id="desc">A professional dark workflow graphic showing public room signals becoming bounded local context, a local message draft, an amber approval checkpoint, and one confirmed public post. A dotted lime operational event track and detached content-free check remain separate from message content.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071523"/>
+      <stop offset="1" stop-color="#0c2234"/>
+    </linearGradient>
+    <linearGradient id="cyanLine" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4ff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#2dd4ff"/>
+    </linearGradient>
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="7" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .sans{font-family:"DejaVu Sans";fill:#e7f1f7}
+      .mono{font-family:"DejaVu Sans Mono";fill:#8ca5b8}
+      .muted{fill:#8ca5b8}
+      .label{font-size:13px;font-weight:700;letter-spacing:1.5px}
+      .title{fill:#f4f8fb;font-size:42px;font-weight:760}
+      .step{fill:#e7f1f7;font-size:18px;font-weight:700}
+      .body{fill:#a9bdcb;font-size:14px}
+      .tiny{fill:#8ca5b8;font-size:12px}
+      .card{fill:#0d2639;stroke:#27465d;stroke-width:1.5}
+      .cyan{stroke:#2dd4ff;fill:none}
+      .lime{stroke:#a8f05a;fill:none}
+      .amber{stroke:#ffb84d;fill:none}
+    </style>
+  </defs>
+
+  <rect width="1440" height="760" rx="28" fill="url(#bg)"/>
+  <path d="M0 610 C280 560 430 700 730 640 C1020 580 1160 680 1440 610 V760 H0Z" fill="#091c2b" opacity="0.65"/>
+
+  <g class="sans">
+    <text x="72" y="72" class="label" fill="#2dd4ff">TECHNOCORE-AGENT · OPERATOR LOOP</text>
+    <text x="72" y="126" class="title">Find the signal. Shape the reply.</text>
+    <text x="72" y="172" class="title">You decide what ships.</text>
+    <text x="72" y="210" class="body">Bounded observation and local work stop at a visible checkpoint before anything becomes public.</text>
+  </g>
+
+  <!-- public room activity -->
+  <g transform="translate(72 292)">
+    <text class="sans label muted" x="0" y="0" fill="#8ca5b8">PUBLIC ROOM</text>
+    <g stroke-linecap="round" stroke-width="5">
+      <path d="M0 42h82" stroke="#2dd4ff" opacity="0.88"/>
+      <path d="M22 68h116" stroke="#4d7188"/>
+      <path d="M4 94h52" stroke="#4d7188"/>
+      <path d="M50 120h98" stroke="#2dd4ff" opacity="0.55"/>
+      <path d="M12 146h126" stroke="#4d7188"/>
+      <path d="M38 172h72" stroke="#4d7188"/>
+    </g>
+    <text class="mono tiny" x="0" y="216" fill="#8ca5b8">caller-supplied data</text>
+  </g>
+
+  <!-- convergence line -->
+  <path d="M226 382 C270 382 274 416 314 416" stroke="url(#cyanLine)" stroke-width="4" fill="none"/>
+  <path d="M226 438 C270 438 274 416 314 416" stroke="#31546c" stroke-width="2" fill="none"/>
+  <path d="M544 416h40M789 416h40M1059 416h35" stroke="#2dd4ff" stroke-width="3" fill="none" opacity="0.7"/>
+
+  <!-- bounded context -->
+  <g transform="translate(314 306)">
+    <rect class="card" width="230" height="220" rx="16"/>
+    <path d="M0 32V16Q0 0 16 0h32M182 0h32q16 0 16 16v32M230 172v32q0 16-16 16h-32M48 220H16q-16 0-16-16v-32" class="cyan" stroke-width="3"/>
+    <text class="sans label" x="24" y="38" fill="#2dd4ff">BOUNDED WINDOW</text>
+    <text class="sans step" x="24" y="78" fill="#e7f1f7">Observe</text>
+    <text class="sans body" x="24" y="106" fill="#a9bdcb">Validated records</text>
+    <text class="sans body" x="24" y="128" fill="#a9bdcb">Sequence coverage</text>
+    <text class="sans body" x="24" y="150" fill="#a9bdcb">Visible gaps</text>
+    <g transform="translate(24 174)">
+      <rect width="150" height="5" rx="2.5" fill="#27465d"/>
+      <rect width="112" height="5" rx="2.5" fill="#2dd4ff"/>
+      <circle cx="126" cy="2.5" r="5" fill="#ffb84d"/>
+      <text class="mono tiny" x="0" y="28" fill="#8ca5b8">bounded ≠ complete</text>
+    </g>
+  </g>
+
+  <!-- local cache -->
+  <g transform="translate(584 326)">
+    <rect x="10" y="12" width="205" height="178" rx="14" fill="#0a1e2e" stroke="#1f3c51"/>
+    <rect x="5" y="6" width="205" height="178" rx="14" fill="#0c2335" stroke="#23445a"/>
+    <rect class="card" width="205" height="178" rx="14"/>
+    <text class="sans label" x="22" y="34" fill="#a8f05a">LOCAL CACHE</text>
+    <text class="sans step" x="22" y="72" fill="#e7f1f7">Retain &amp; find</text>
+    <path d="M22 98h136M22 118h108M22 138h150" stroke="#416379" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="174" cy="118" r="8" fill="none" stroke="#a8f05a" stroke-width="2"/>
+    <path d="M180 124l12 12" stroke="#a8f05a" stroke-width="2" stroke-linecap="round"/>
+    <text class="mono tiny" x="22" y="162" fill="#8ca5b8">retained observations</text>
+  </g>
+
+  <!-- draft -->
+  <g transform="translate(829 306)">
+    <rect class="card" width="230" height="220" rx="16"/>
+    <text class="sans label" x="24" y="38" fill="#2dd4ff">LOCAL MESSAGE</text>
+    <text class="sans step" x="24" y="78" fill="#e7f1f7">Shape</text>
+    <rect x="24" y="98" width="182" height="68" rx="9" fill="#091c2b" stroke="#31546c"/>
+    <path d="M40 117h132M40 136h148M40 155h96" stroke="#527186" stroke-width="4" stroke-linecap="round"/>
+    <text class="mono tiny" x="24" y="194" fill="#8ca5b8">sha256: 8f2c…a91d</text>
+  </g>
+
+  <!-- approval checkpoint -->
+  <g transform="translate(1094 306)">
+    <rect width="96" height="220" rx="16" fill="#2a2115" stroke="#ffb84d" stroke-width="2"/>
+    <text class="sans label" transform="translate(34 185) rotate(-90)" fill="#ffb84d">EXPLICIT APPROVAL</text>
+    <circle cx="48" cy="44" r="14" fill="none" stroke="#ffb84d" stroke-width="3"/>
+    <path d="M48 34v20" stroke="#ffb84d" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- public output -->
+  <path d="M1190 416h104" stroke="#2dd4ff" stroke-width="5" fill="none" filter="url(#softGlow)"/>
+  <path d="M1286 406l18 10-18 10" fill="none" stroke="#2dd4ff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(1310 342)">
+    <rect width="88" height="148" rx="14" fill="#102c40" stroke="#2dd4ff"/>
+    <text class="sans label" x="17" y="30" fill="#2dd4ff">PUBLIC</text>
+    <path d="M18 58h52M18 78h42M18 98h48" stroke="#54758a" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="24" cy="122" r="6" fill="#a8f05a"/>
+    <text class="mono tiny" x="37" y="126" fill="#8ca5b8">readback</text>
+  </g>
+
+  <!-- operational event track -->
+  <g transform="translate(314 540)">
+    <text class="sans label" x="0" y="0" fill="#a8f05a">CONTENT-FREE OPERATIONS</text>
+    <path d="M0 38H880" stroke="#a8f05a" stroke-width="2" stroke-dasharray="3 11"/>
+    <g fill="#a8f05a">
+      <rect x="78" y="32" width="12" height="12" transform="rotate(45 84 38)"/>
+      <rect x="346" y="32" width="12" height="12" transform="rotate(45 352 38)"/>
+      <rect x="590" y="32" width="12" height="12" transform="rotate(45 596 38)"/>
+      <rect x="842" y="32" width="12" height="12" transform="rotate(45 848 38)"/>
+    </g>
+    <text class="mono tiny" x="0" y="70" fill="#8ca5b8">counts · coverage · lifecycle · outcome — never message text</text>
+  </g>
+
+  <!-- isolated check -->
+  <g transform="translate(72 602)">
+    <rect width="202" height="96" rx="14" fill="#0a1e2e" stroke="#527186" stroke-dasharray="5 5"/>
+    <text class="sans label muted" x="18" y="28" fill="#8ca5b8">DETACHED CHECK</text>
+    <text class="sans body" x="18" y="54" fill="#a9bdcb">Content-free decision</text>
+    <text class="mono tiny" x="18" y="76" fill="#8ca5b8">GET-only · no identity</text>
+  </g>
+</svg>

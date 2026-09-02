@@ -2,74 +2,142 @@
 
 # Technocore Sentinel
 
-Technocore Sentinel is a useful, read-only incremental monitoring and security CLI for public Technocore rooms. Each monitor run performs a bounded, origin-pinned incremental GET, scans only messages newer than a securely stored per-room cursor, reports deterministic safety findings and bounded-window coverage status, and exits. An empty incremental response may require one additional bounded head read to detect and recover a cursor beyond the current room head. It is designed for one-shot use, cron/systemd scheduling, dashboard ingestion, and alert bridges—not as a daemon.
+**A read-only safety and compatibility layer for fast-moving Technocore and tclk rooms.**
 
-A deliberately gated, one-time `did:key` onboarding flow is also available as secondary functionality. It uses an isolated Ed25519 key and has **no wallet integration**.
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-0A1128?logo=python&logoColor=white)](pyproject.toml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-0466C8)](LICENSE)
+![Monitor boundary: GET only](https://img.shields.io/badge/Monitor-GET--only-32D74B)
+![Origin: pinned](https://img.shields.io/badge/Origin-technocore.chat-00B4D8)
+
+> **Stay oriented in agent rooms. Surface recognizable risk. Give agents a compact decision—not raw room content.**
+
+Technocore Chat is built for the agentic economy: lightweight public rooms and notes that agents can reach over plain HTTP. That openness is useful, but every room message, topic, sender, and URL remains untrusted input. Technocore Sentinel gives operators, agents, schedulers, and dashboards one bounded check that answers three questions:
+
+1. **What arrived since the last successful observation?**
+2. **Did deterministic rules surface anything worth reviewing?**
+3. **Did the bounded response leave a visible coverage gap?**
+
+It performs an origin-pinned incremental GET, validates the response, scans new records locally, emits text or closed JSON, commits its secure per-room cursor, and exits. No daemon. No arbitrary origins. No discovered URL following. No wallet access. No autonomous posting. No room text handed to a privileged agent through `agent-check`.
 
 ![Technocore Sentinel one-shot monitoring flow](docs/assets/monitor-flow.svg)
 
-## Why this matters
+> [!IMPORTANT]
+> **Current scope:** the implemented product is the Sentinel monitor, content-free agent contract, reference workflows, and gated DID onboarding. tclk-aware checks, compatibility baselines, validator/miner operations, the broader Signalbox TUI, local conversation cache/search, drafting workflow, and general reviewed posting client are planned separately and are **not** claimed by this release.
 
-Public agent rooms are useful precisely because they are open, but that also makes them hostile input surfaces. An operator needs to answer three practical questions without turning every room read into another privileged agent:
+## Ecosystem fit
 
-1. **What arrived since the last successful check?** Secure per-room cursors prevent repeatedly processing the same bounded tail.
-2. **Does the new content contain recognizable safety risks?** Six explainable rule groups cover prompt injection, command-execution requests, wallet or secret solicitation, impersonation, suspicious URLs, and repetitive farming.
-3. **Did the bounded response leave an observability gap?** `coverage_gap`, `missing_sequence_count`, and `baseline_only` report what was not returned without guessing why.
+Sentinel is an independent companion for the FLOP/Technocore ecosystem. It is designed for operators who want to participate usefully in machine-to-machine coordination without turning public room text into authority.
 
-Sentinel answers those questions in one process, emits scheduler-friendly text or JSON, commits state only after successful validation and rendering, and exits. It is intentionally a **local scheduled safety scanner**, not an archive, autonomous agent, or generic monitoring platform.
-
-| Operating property | Verified bound or behavior |
+| Upstream surface | What Sentinel adds |
 | --- | --- |
-| Network reads | One bounded GET normally; at most two during empty-response recovery |
-| Records per response | At most 200 |
-| Detection groups | 6 deterministic safety categories |
-| Cursor capacity | At most 200 rooms in a 16 KiB state file |
-| State permissions | Exact `0700` parent and `0600` state/lock files |
-| Side effects | Local cursor-state writes only; no Technocore writes, URL following, command execution, wallet access, or daemon |
+| Technocore Chat rooms | Bounded read-only observation, local scanning, cursor state, and coverage warnings |
+| Agent workflows | Closed JSON summaries that say whether review is needed without exposing raw messages |
+| tclk coordination frames | Planned read-only awareness of deal activity and malformed/suspicious frame patterns |
+| Future validator/miner operations | Planned operational monitoring and evidence trails, without claiming eligibility or touching keys |
 
-## Install
+Sentinel is not a FLOP Labs product, endorsement, token claim, validator, miner, wallet, or payment rail. FLOP-aligned colors in this repository use the public palette values only; the FLOP logo and lockups are not used.
 
-Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required.
+## Why operators use it
+
+| Operator problem | Sentinel response |
+| --- | --- |
+| Fast rooms repeatedly return overlapping bounded tails | A secure per-room cursor processes only the validated increment |
+| Public content may contain prompts, commands, URLs, and secret requests | Six deterministic rule groups scan locally without executing or following content |
+| Bounded reads can omit earlier sequence positions | Coverage fields expose baselines and gaps instead of implying complete history |
+| Agent workflows need a small decision, not another untrusted transcript | `agent-check` emits a closed content-free summary with `review_required` |
+| Cron and dashboards need predictable process behavior | One process runs, commits state before success output, and exits with operational failures nonzero |
+
+### Detection groups
+
+- prompt-injection patterns;
+- command-execution requests;
+- wallet or secret solicitation;
+- identity impersonation cues;
+- suspicious URLs;
+- repetitive farming behavior.
+
+Findings are explainable heuristics. They are not proof of intent, a moderation decision, or complete protection.
+
+## Quick start
+
+Requires Python 3.12+ and [uv](https://docs.astral.sh/uv/).
 
 ```sh
-uv sync
-uv run technocore-sentinel --help
+git clone https://github.com/0xAJPanda/technocore-sentinel.git
+cd technocore-sentinel
+uv sync --frozen
 ```
 
-## Use from an agent — no MCP required
-
-This change adds a versioned, CLI/JSON-first agent contract. An agent should discover the contract before it runs a monitor cycle. Contract discovery is local and network-free:
+Discover the network-free agent contract:
 
 ```sh
 uv run technocore-sentinel contract
 ```
 
-Then run one bounded JSON monitor cycle with an operator-chosen absolute state path:
+Run one bounded content-free check with a private absolute state path:
 
 ```sh
-uv run technocore-sentinel monitor --room lobby \
-  --state-file /ABSOLUTE/PRIVATE/PATH/monitor.json --format json
+uv run technocore-sentinel agent-check --room lobby \
+  --state-file /ABSOLUTE/PRIVATE/PATH/monitor.json
 ```
 
-For a local checkout, use the two `uv run` commands above from the repository root. After a verified PyPI release exists, a zero-permanent-install invocation can use this pinned template:
+The summary contains schema/cursor state, aggregate counts, coverage status, and `review_required`. It contains no raw messages, excerpts, sender values, URLs, rules, or commands. `review_required` is a triage signal—not authorization for a follow-up action.
+
+## Pick the right command
+
+| Command | Purpose | Network behavior |
+| --- | --- | --- |
+| `contract` | Print the closed version-1 agent contract | None |
+| `agent-check` | Emit one content-free room decision | Bounded GET only |
+| `monitor` | Emit a detailed incremental text or JSON report | Bounded GET only |
+| `summarize-report` | Validate and reduce an existing report from stdin | None |
+| `scan` | Run a non-incremental one-shot room scan | Bounded GET only |
+| `identity init/show` | Create or inspect an isolated project DID | None |
+| `publish-profile` | Preview a profile write; `--submit` writes publicly | Dry-run by default |
+| `introduce` | Preview a signed introduction; `--submit` writes publicly | Dry-run by default |
+
+The monitor client is pinned to exactly `https://technocore.chat`, uses normal TLS certificate verification, rejects redirects, requests identity encoding, applies a 20-second timeout, and caps responses at 1 MiB. It never follows URLs discovered in room content and does not accept arbitrary origins.
+
+## Agent integration — CLI/JSON first
+
+Consumers must require `schema_version == 1` and the exact closed summary shape. Unknown versions and unknown fields fail closed. A successful summary may still set `review_required: true` and exit `0`; network, validation, secure-state, and rendering failures exit nonzero.
+
+Systems that already possess a complete version-1 monitor report can validate and reduce it without network, cursor state, or identity access:
+
+```sh
+uv run technocore-sentinel summarize-report < report.json
+```
+
+MCP is not required and is not currently shipped. See the [agent workflow guide](examples/agent-workflows/README.md) and templates for [Hermes](examples/agent-workflows/hermes.md), [Claude Code](examples/agent-workflows/claude-code.md), [Codex](examples/agent-workflows/codex.md), and [OpenClaw](examples/agent-workflows/openclaw.md).
+
+### Package-runner template
+
+There is no verified PyPI release yet. After one exists, use an exact pinned version rather than a mutable branch:
 
 ```sh
 uvx --from 'technocore-sentinel==RELEASE' technocore-sentinel contract
-uvx --from 'technocore-sentinel==RELEASE' technocore-sentinel monitor \
-  --room lobby --state-file /ABSOLUTE/PRIVATE/PATH/monitor.json --format json
+uvx --from 'technocore-sentinel==RELEASE' technocore-sentinel agent-check \
+  --room lobby --state-file /ABSOLUTE/PRIVATE/PATH/monitor.json
 ```
 
-`RELEASE` is a placeholder, not a published version claim. Replace it only with an exact, verified PyPI release. Do not install or execute a mutable branch such as `main` in an agent workflow. The `uvx` route cannot be verified until such a release exists.
+`RELEASE` is deliberately a placeholder. The `uvx` route remains unverified until an exact release is published and audited.
 
-Consumers must require `schema_version == 1` before using a report. Version 1 is additive-only: consumers may ignore unknown fields within version 1, but must fail closed on an unknown schema version. Any breaking change requires a new schema version. A successful report can contain findings or coverage gaps and still exit `0`; network, validation, secure-state, and rendering failures exit nonzero.
+## Verified operating envelope
 
-MCP is not required and is not currently shipped. A future MCP integration may be offered only as an optional wrapper around the same JSON contract.
+| Property | Bound or behavior |
+| --- | --- |
+| Normal monitor reads | One bounded GET |
+| Empty-response recovery | At most one additional bounded head GET |
+| Records per response | At most 200 |
+| Detection groups | 6 deterministic categories |
+| Cursor capacity | At most 200 rooms |
+| State document | Canonical JSON, maximum 16 KiB |
+| State permissions | Exact `0700` parent and `0600` state/lock files |
+| Response protection | 20-second timeout and 1 MiB cap |
+| Monitor side effects | Local cursor state only; no Technocore writes |
+| Runtime model | One-shot process; no daemon or listener |
 
-See the [agent workflow guide](examples/agent-workflows/README.md) and the host-specific templates for [Hermes](examples/agent-workflows/hermes.md), [Claude Code](examples/agent-workflows/claude-code.md), [Codex](examples/agent-workflows/codex.md), and [OpenClaw](examples/agent-workflows/openclaw.md).
-
-The network client is pinned to exactly `https://technocore.chat`, uses the standard-library `urllib` stack with normal TLS certificate verification, rejects redirects, requests identity encoding, applies a 20-second timeout, and caps responses at 1 MiB. The monitor is GET-only and never follows URLs found in messages. It does not support arbitrary origins.
-
-## Incremental monitoring
+## Detailed monitor usage
 
 Run one text-report cycle:
 
@@ -163,7 +231,10 @@ Dry runs print a redacted POST plan and make zero POST requests. Seeds and signa
 
 ## Live-write warning
 
-> **WARNING: `--submit` performs an immediate public, unauthenticated, world-readable write to `https://technocore.chat`. There is no private mode, undo guarantee, or identity verification. Review the complete dry-run output first.**
+> [!CAUTION]
+> **`--submit` performs an immediate public, unauthenticated, world-readable write to `https://technocore.chat`. There is no private mode, undo guarantee, or identity verification.**
+>
+> **Technocore Chat protocol compatibility is actively tracked against the live deployment. Do not use either live `--submit` path until the write request, acknowledgement, and independent readback fixtures have passed the current compatibility review.** Dry runs remain local and are the only documented use during that review.
 
 The exact live commands are:
 
@@ -188,8 +259,33 @@ A private `0600` journal makes a two-file commit recoverable: the next locked su
 Tests use mocked transports and never make live network calls or create a repository identity:
 
 ```sh
+uv sync --frozen
 uv run python -m unittest discover -s tests -v
+uv run python -O -m unittest discover -s tests -v
 uv run python -m compileall -q src tests
 ```
 
-See [SECURITY.md](SECURITY.md) for the safety model and reporting process.
+## What Sentinel is not
+
+Sentinel is not:
+
+- a complete Technocore client or durable archive;
+- the planned Signalbox terminal inbox;
+- a validator/miner implementation or eligibility claim;
+- a moderation authority, firewall, or guarantee of safe content;
+- an autonomous reply or posting agent;
+- a wallet tool or airdrop-eligibility checker;
+- an arbitrary-origin scraper, daemon, webhook server, or MCP server.
+
+## Documentation
+
+- [Security model and reporting](SECURITY.md)
+- [Agent workflow guide](examples/agent-workflows/README.md)
+- [Hermes integration](examples/agent-workflows/hermes.md)
+- [Claude Code integration](examples/agent-workflows/claude-code.md)
+- [Codex integration](examples/agent-workflows/codex.md)
+- [OpenClaw integration](examples/agent-workflows/openclaw.md)
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

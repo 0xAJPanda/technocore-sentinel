@@ -1,0 +1,1480 @@
+[
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "subparsers",
+        "choice_help_actions": [
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "contract",
+            "help": "print the network-free monitor JSON contract",
+            "metavar": "contract",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "identity",
+            "help": "create or inspect the isolated DID",
+            "metavar": "identity",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "scan",
+            "help": "GET and scan untrusted room content",
+            "metavar": "scan",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "monitor",
+            "help": "GET and report one incremental room window",
+            "metavar": "monitor",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "agent-check",
+            "help": "GET and emit a content-free room safety summary",
+            "metavar": "agent-check",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "summarize-report",
+            "help": "validate a monitor report from stdin and emit a safe summary",
+            "metavar": "summarize-report",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "publish-profile",
+            "help": "plan or publish a public DID profile",
+            "metavar": "publish-profile",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "introduce",
+            "help": "plan or post a signed introduction",
+            "metavar": "introduce",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          }
+        ],
+        "choices": [
+          {
+            "help": "print the network-free monitor JSON contract",
+            "name": "contract"
+          },
+          {
+            "help": "create or inspect the isolated DID",
+            "name": "identity"
+          },
+          {
+            "help": "GET and scan untrusted room content",
+            "name": "scan"
+          },
+          {
+            "help": "GET and report one incremental room window",
+            "name": "monitor"
+          },
+          {
+            "help": "GET and emit a content-free room safety summary",
+            "name": "agent-check"
+          },
+          {
+            "help": "validate a monitor report from stdin and emit a safe summary",
+            "name": "summarize-report"
+          },
+          {
+            "help": "plan or publish a public DID profile",
+            "name": "publish-profile"
+          },
+          {
+            "help": "plan or post a signed introduction",
+            "name": "introduce"
+          }
+        ],
+        "const": null,
+        "default": null,
+        "dest": "command",
+        "help": null,
+        "metavar": null,
+        "nargs": "A...",
+        "option_strings": [],
+        "required": true,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [
+          1
+        ],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "contract"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel contract",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "subparsers",
+        "choice_help_actions": [
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "init",
+            "help": "create a local Ed25519 key",
+            "metavar": "init",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
+            "dest": "show",
+            "help": "show public identity data",
+            "metavar": "show",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          }
+        ],
+        "choices": [
+          {
+            "help": "create a local Ed25519 key",
+            "name": "init"
+          },
+          {
+            "help": "show public identity data",
+            "name": "show"
+          }
+        ],
+        "const": null,
+        "default": null,
+        "dest": "identity_command",
+        "help": null,
+        "metavar": null,
+        "nargs": "A...",
+        "option_strings": [],
+        "required": true,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [
+          1
+        ],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "identity"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel identity",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/identity.key",
+        "dest": "key_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--key-file"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "identity",
+      "init"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--key-file"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel identity init",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/identity.key",
+        "dest": "key_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--key-file"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "identity",
+      "show"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--key-file"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel identity show",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "lobby",
+        "dest": "room",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--room"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": 200,
+        "dest": "limit",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--limit"
+        ],
+        "required": false,
+        "type": {
+          "kind": "exact_callable",
+          "symbol": "builtins.int"
+        }
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": [
+          "text",
+          "json"
+        ],
+        "const": null,
+        "default": "text",
+        "dest": "format",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--format"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "scan"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 3,
+        "option_string": "--format"
+      },
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 2,
+        "option_string": "--limit"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--room"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel scan",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "lobby",
+        "dest": "room",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--room"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/monitor.json",
+        "dest": "state_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--state-file"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": [
+          "text",
+          "json"
+        ],
+        "const": null,
+        "default": "text",
+        "dest": "format",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--format"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "const": null,
+        "default": "low",
+        "dest": "min_severity",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--min-severity"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1,
+          2,
+          3,
+          4
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "monitor"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 3,
+        "option_string": "--format"
+      },
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 4,
+        "option_string": "--min-severity"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--room"
+      },
+      {
+        "action_index": 2,
+        "option_string": "--state-file"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel monitor",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "lobby",
+        "dest": "room",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--room"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/monitor.json",
+        "dest": "state_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--state-file"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "const": null,
+        "default": "low",
+        "dest": "min_severity",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--min-severity"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "agent-check"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 3,
+        "option_string": "--min-severity"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--room"
+      },
+      {
+        "action_index": 2,
+        "option_string": "--state-file"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel agent-check",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "summarize-report"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel summarize-report",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/identity.key",
+        "dest": "key_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--key-file"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": null,
+        "dest": "value",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--value"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store_true",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": true,
+        "default": false,
+        "dest": "submit",
+        "help": null,
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "--submit"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "publish-profile"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--key-file"
+      },
+      {
+        "action_index": 3,
+        "option_string": "--submit"
+      },
+      {
+        "action_index": 2,
+        "option_string": "--value"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel publish-profile",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/identity.key",
+        "dest": "key_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--key-file"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/nonce.json",
+        "dest": "nonce_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--nonce-file"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/receipt.json",
+        "dest": "receipt_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--receipt-file"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "lobby",
+        "dest": "room",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--room"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": null,
+        "dest": "text",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--text"
+        ],
+        "required": true,
+        "type": null
+      },
+      {
+        "action_class": "store_true",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": true,
+        "default": false,
+        "dest": "submit",
+        "help": null,
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "--submit"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "introduce"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--key-file"
+      },
+      {
+        "action_index": 2,
+        "option_string": "--nonce-file"
+      },
+      {
+        "action_index": 3,
+        "option_string": "--receipt-file"
+      },
+      {
+        "action_index": 4,
+        "option_string": "--room"
+      },
+      {
+        "action_index": 6,
+        "option_string": "--submit"
+      },
+      {
+        "action_index": 5,
+        "option_string": "--text"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel introduce",
+      "usage": null
+    }
+  }
+]
