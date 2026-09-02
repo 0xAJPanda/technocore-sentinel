@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -30,6 +31,7 @@ OUTPUT_KEYS = {
     "room",
     "cursor_status",
     "new_message_count",
+    "minimum_severity",
     "severity_counts",
     "category_counts",
     "coverage_gap",
@@ -44,10 +46,10 @@ def safe_report():
     return {
         "schema_version": 1,
         "room": "example-room",
-        "previous_seq": 0,
+        "previous_seq": 1,
         "first_seq": None,
         "last_seq": None,
-        "next_seq": 0,
+        "next_seq": 1,
         "cursor_status": "healthy_idle",
         "new_message_count": 0,
         "server_signed_count": 0,
@@ -106,6 +108,8 @@ def assert_matches_schema(test, value, schema):
         test.assertEqual(value, schema["const"])
     if "enum" in schema:
         test.assertIn(value, schema["enum"])
+    if "pattern" in schema and isinstance(value, str):
+        test.assertIsNotNone(re.fullmatch(schema["pattern"], value, re.ASCII))
     if "minimum" in schema and isinstance(value, int) and not isinstance(value, bool):
         test.assertGreaterEqual(value, schema["minimum"])
 
@@ -174,38 +178,39 @@ class AgentWorkflowExampleTests(unittest.TestCase):
         self.assertGreater(report["next_seq"], report["previous_seq"])
         self.assertEqual(report["next_seq"], report["last_seq"])
 
-    def test_openclaw_pinned_consumer_uses_script_stdin_not_report_argument(self):
+    def test_openclaw_pinned_route_uses_packaged_agent_check(self):
         pinned = OPENCLAW.read_text(encoding="utf-8").split(
             "## Pinned zero-permanent-install command body", 1
         )[1]
         cycle = pinned.split("```sh", 2)[2].split("```", 1)[0]
 
-        self.assertIn("/ABSOLUTE/TRUSTED/PATH/TO/python3", cycle)
-        self.assertIn("/ABSOLUTE/TRUSTED/PATH/TO/summarize_report.py", cycle)
-        self.assertIn('< "$report_tmp"', cycle)
-        self.assertNotIn(
-            "summarize_report.py /ABSOLUTE/PRIVATE/PATH/latest-report.json",
-            " ".join(cycle.split()),
-        )
+        self.assertIn("agent-check --room lobby", cycle)
+        self.assertNotIn("/ABSOLUTE/TRUSTED/PATH/TO/python3", cycle)
+        self.assertNotIn("summarize_report.py", cycle)
 
-    def test_every_workflow_template_uses_atomic_validated_report_staging(self):
+    def test_openclaw_pinned_consumer_uses_script_stdin_not_report_argument(self):
+        self.test_openclaw_pinned_route_uses_packaged_agent_check()
+
+    def test_every_workflow_template_uses_atomic_agent_summary_staging(self):
         for document in (WORKFLOW_README, *HOST_DOCS):
             with self.subTest(document=document.name):
                 text = document.read_text(encoding="utf-8")
-                self.assertIn("summarize_report.py", text)
-                self.assertIn("mktemp /ABSOLUTE/PRIVATE/PATH/.sentinel-report.XXXXXX", text)
-                self.assertIn('chmod 600 "$report_tmp"', text)
-                self.assertIn('< "$report_tmp"', text)
+                self.assertIn("agent-check --room lobby", text)
+                self.assertIn("mktemp /ABSOLUTE/PRIVATE/PATH/.sentinel-summary.XXXXXX", text)
+                self.assertIn('chmod 600 "$summary_tmp"', text)
                 self.assertIn(
-                    'mv -f -- "$report_tmp" /ABSOLUTE/PRIVATE/PATH/latest-report.json',
+                    'mv -f -- "$summary_tmp" /ABSOLUTE/PRIVATE/PATH/latest-summary.json',
                     text,
                 )
                 self.assertNotIn(
-                    "> /ABSOLUTE/PRIVATE/PATH/latest-report.json",
+                    "> /ABSOLUTE/PRIVATE/PATH/latest-summary.json",
                     text,
                 )
 
-    def test_hostile_unknown_fields_and_findings_are_never_copied(self):
+    def test_every_workflow_template_uses_atomic_validated_report_staging(self):
+        self.test_every_workflow_template_uses_atomic_agent_summary_staging()
+
+    def test_hostile_unknown_fields_and_findings_are_rejected(self):
         marker = "HOSTILE_MARKER_DO_NOT_LEAK"
         report = safe_report()
         report.update(
@@ -229,24 +234,46 @@ class AgentWorkflowExampleTests(unittest.TestCase):
         )
         report["severity_counts"]["low"] = 1
         report["category_counts"]["prompt_injection"] = 1
+        report.update(first_seq=2, last_seq=2, next_seq=2, new_message_count=1, unsigned_count=1,
+                      cursor_status="advanced")
         result = self.run_consumer(encode(report))
 
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stderr, b"")
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(result.stderr, b"error: invalid report\n")
+        self.assertEqual(result.stdout, b"")
         self.assertNotIn(marker.encode(), result.stdout)
-        self.assertEqual(set(json.loads(result.stdout)), OUTPUT_KEYS)
+        self.assertNotIn(marker.encode(), result.stderr)
+
+    def test_hostile_unknown_fields_and_findings_are_never_copied(self):
+        self.test_hostile_unknown_fields_and_findings_are_rejected()
 
     def test_each_review_trigger_requires_review(self):
         def add_high_finding(report):
-            report["findings"] = [example_finding(severity="high")]
+            report["findings"] = [{**example_finding(severity="high"), "seq": 2}]
             report["severity_counts"]["high"] = 1
             report["category_counts"]["prompt_injection"] = 1
+            report.update(first_seq=2, last_seq=2, next_seq=2, new_message_count=1,
+                          unsigned_count=1, cursor_status="advanced")
+
+        def add_gap(report):
+            report.update(first_seq=3, last_seq=3, next_seq=3, new_message_count=1,
+                          unsigned_count=1, coverage_gap=True, missing_sequence_count=1,
+                          cursor_status="advanced")
+
+        def make_baseline(report):
+            report.update(previous_seq=0, next_seq=0, baseline_only=True, cursor_status="baseline")
+
+        def make_recovered(report):
+            report.update(previous_seq=0, first_seq=1, last_seq=1, next_seq=1,
+                          new_message_count=1, unsigned_count=1, baseline_only=True,
+                          cursor_status="recovered_baseline", cursor_recovered=True,
+                          recovered_from_seq=2)
 
         mutations = {
             "high severity": add_high_finding,
-            "coverage gap": lambda report: report.update(coverage_gap=True),
-            "baseline only": lambda report: report.update(baseline_only=True),
-            "cursor recovered": lambda report: report.update(cursor_recovered=True),
+            "coverage gap": add_gap,
+            "baseline only": make_baseline,
+            "cursor recovered": make_recovered,
         }
         for name, mutate in mutations.items():
             with self.subTest(name=name):
@@ -281,6 +308,20 @@ class AgentWorkflowExampleTests(unittest.TestCase):
 
         for report in cases:
             with self.subTest(report=report):
+                self.assert_invalid(encode(report), marker)
+
+    def test_rejects_finding_sequence_outside_report_interval(self):
+        marker = "HOSTILE_OUT_OF_RANGE_FINDING"
+        for sequence in (0, 999):
+            report = safe_report()
+            report.update(
+                first_seq=2, last_seq=2, next_seq=2, new_message_count=1,
+                unsigned_count=1, cursor_status="advanced",
+                findings=[{**example_finding(), "seq": sequence, "excerpt": marker}],
+            )
+            report["severity_counts"]["low"] = 1
+            report["category_counts"]["prompt_injection"] = 1
+            with self.subTest(sequence=sequence):
                 self.assert_invalid(encode(report), marker)
 
     def test_safe_report_does_not_require_review(self):

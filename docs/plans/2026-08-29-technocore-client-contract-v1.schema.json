@@ -1,0 +1,737 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://technocore-signalbox.invalid/contracts/client-result-v1.schema.json",
+  "title": "Technocore Signalbox client result v1",
+  "description": "Closed machine-result schemas known before the bounded /rooms projection spike. The technocore-rooms variant is added only by Task 4 after that spike.",
+  "oneOf": [
+    { "$ref": "#/$defs/roomRead" },
+    { "$ref": "#/$defs/roomFollow" },
+    { "$ref": "#/$defs/localSearch" },
+    { "$ref": "#/$defs/cacheStatus" },
+    { "$ref": "#/$defs/cachePrune" },
+    { "$ref": "#/$defs/messageDraft" },
+    { "$ref": "#/$defs/messagePlan" },
+    { "$ref": "#/$defs/messageResult" },
+    { "$ref": "#/$defs/reconcileResult" },
+    { "$ref": "#/$defs/operationOutcome" }
+  ],
+  "$defs": {
+    "room": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,47}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]{0,63})$"
+    },
+    "positiveDecimal": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,63}$"
+    },
+    "nonce": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]{0,18}$"
+    },
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "utcTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-([0-2][0-9]|3[01])T([01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]\\.[0-9]{6}Z$"
+    },
+    "eventStatus": {
+      "enum": ["not_requested", "recorded", "failed"]
+    },
+    "errorCode": {
+      "enum": [
+        "invalid_arguments",
+        "invalid_state_path",
+        "unsafe_state_path",
+        "resource_busy",
+        "unsupported_state_schema",
+        "invalid_state",
+        "invalid_draft",
+        "approval_digest_mismatch",
+        "capability_rooms_unavailable",
+        "capability_read_unavailable",
+        "capability_follow_unavailable",
+        "capability_post_unavailable",
+        "capability_profile_write_unavailable",
+        "capability_events_room_unavailable",
+        "invalid_response_json",
+        "invalid_response_schema",
+        "response_request_mismatch",
+        "response_too_large",
+        "response_encoding_unsupported",
+        "response_media_unsupported",
+        "redirect_refused",
+        "network_deadline",
+        "network_failure",
+        "canceled",
+        "cache_backend_unsupported",
+        "cache_limit_exceeded",
+        "cache_commit_failed",
+        "draft_commit_failed",
+        "pending_operation_exists",
+        "pending_reconciliation_required",
+        "post_refused_400",
+        "post_refused_403",
+        "post_refused_413",
+        "post_refused_422",
+        "post_refused_429",
+        "event_append_failed",
+        "local_commit_failed",
+        "pending_cleanup_failed",
+        "authorization_invalid",
+        "authorization_expired"
+      ]
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_complete",
+        "leading_gap",
+        "internal_gap_count",
+        "local_prune_gap_count",
+        "server_regression_count",
+        "detail_truncated"
+      ],
+      "properties": {
+        "baseline_complete": { "type": "boolean" },
+        "leading_gap": { "type": "boolean" },
+        "internal_gap_count": { "type": "integer", "minimum": 0 },
+        "local_prune_gap_count": { "type": "integer", "minimum": 0 },
+        "server_regression_count": { "type": "integer", "minimum": 0 },
+        "detail_truncated": { "type": "boolean" }
+      }
+    },
+    "roomMessage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "room",
+        "seq",
+        "ts",
+        "from",
+        "text",
+        "nonce",
+        "signed_marker",
+        "content_trust"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "room": { "$ref": "#/$defs/room" },
+        "seq": { "$ref": "#/$defs/positiveDecimal" },
+        "ts": { "type": "string", "minLength": 1 },
+        "from": { "type": "string" },
+        "text": { "type": "string", "maxLength": 4096 },
+        "nonce": {
+          "oneOf": [
+            { "$ref": "#/$defs/nonce" },
+            { "type": "null" }
+          ]
+        },
+        "signed_marker": { "type": "boolean" },
+        "content_trust": { "const": "public_untrusted_data" }
+      }
+    },
+    "followBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "duration_seconds",
+        "wait_seconds",
+        "max_cycles",
+        "max_records",
+        "max_bytes",
+        "max_consecutive_failures",
+        "remaining_seconds",
+        "remaining_cycles",
+        "remaining_records",
+        "remaining_bytes",
+        "remaining_consecutive_failures"
+      ],
+      "properties": {
+        "duration_seconds": { "type": "integer", "minimum": 3, "maximum": 3600 },
+        "wait_seconds": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "max_cycles": { "type": "integer", "minimum": 1, "maximum": 10000 },
+        "max_records": { "type": "integer", "minimum": 1, "maximum": 50000 },
+        "max_bytes": { "type": "integer", "minimum": 1, "maximum": 67108864 },
+        "max_consecutive_failures": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "remaining_seconds": { "type": "number", "minimum": 0 },
+        "remaining_cycles": { "type": "integer", "minimum": 0 },
+        "remaining_records": { "type": "integer", "minimum": 0 },
+        "remaining_bytes": { "type": "integer", "minimum": 0 },
+        "remaining_consecutive_failures": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "searchResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["room", "seq", "ts", "from", "text", "nonce", "observed_at", "content_trust"],
+      "properties": {
+        "room": { "$ref": "#/$defs/room" },
+        "seq": { "$ref": "#/$defs/positiveDecimal" },
+        "ts": { "type": "string", "minLength": 1 },
+        "from": { "type": "string" },
+        "text": { "type": "string", "maxLength": 4096 },
+        "nonce": {
+          "oneOf": [
+            { "$ref": "#/$defs/nonce" },
+            { "type": "null" }
+          ]
+        },
+        "observed_at": { "$ref": "#/$defs/utcTimestamp" },
+        "content_trust": { "const": "public_untrusted_data" }
+      }
+    },
+    "cacheRoom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "room",
+        "message_count",
+        "first_seq",
+        "last_seq",
+        "first_observed_at",
+        "last_observed_at",
+        "baseline_complete",
+        "gap_count",
+        "regression_count",
+        "pruned_count"
+      ],
+      "properties": {
+        "room": { "$ref": "#/$defs/room" },
+        "message_count": { "type": "integer", "minimum": 0 },
+        "first_seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/positiveDecimal" },
+            { "type": "null" }
+          ]
+        },
+        "last_seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/decimal" },
+            { "type": "null" }
+          ]
+        },
+        "first_observed_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/utcTimestamp" },
+            { "type": "null" }
+          ]
+        },
+        "last_observed_at": {
+          "oneOf": [
+            { "$ref": "#/$defs/utcTimestamp" },
+            { "type": "null" }
+          ]
+        },
+        "baseline_complete": { "type": "boolean" },
+        "gap_count": { "type": "integer", "minimum": 0 },
+        "regression_count": { "type": "integer", "minimum": 0 },
+        "pruned_count": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "roomRead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "room",
+        "requested_since",
+        "limit",
+        "first_seq",
+        "last_seq",
+        "coverage",
+        "records"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-room-read" },
+        "room": { "$ref": "#/$defs/room" },
+        "requested_since": {
+          "oneOf": [
+            { "$ref": "#/$defs/decimal" },
+            { "type": "null" }
+          ]
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "first_seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/positiveDecimal" },
+            { "type": "null" }
+          ]
+        },
+        "last_seq": { "$ref": "#/$defs/decimal" },
+        "coverage": { "$ref": "#/$defs/coverage" },
+        "records": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/roomMessage" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "records": { "maxItems": 0 } },
+            "required": ["records"]
+          },
+          "then": { "properties": { "first_seq": { "type": "null" } } }
+        },
+        {
+          "if": {
+            "properties": { "records": { "minItems": 1 } },
+            "required": ["records"]
+          },
+          "then": { "properties": { "first_seq": { "$ref": "#/$defs/positiveDecimal" } } }
+        }
+      ]
+    },
+    "roomFollow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "room",
+        "started_at",
+        "finished_at",
+        "cycles",
+        "requests",
+        "record_count",
+        "response_bytes",
+        "first_seq",
+        "last_seq",
+        "coverage",
+        "budget",
+        "outcome",
+        "stop_reason"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-room-follow" },
+        "room": { "$ref": "#/$defs/room" },
+        "started_at": { "$ref": "#/$defs/utcTimestamp" },
+        "finished_at": { "$ref": "#/$defs/utcTimestamp" },
+        "cycles": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "requests": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "record_count": { "type": "integer", "minimum": 0, "maximum": 50000 },
+        "response_bytes": { "type": "integer", "minimum": 0, "maximum": 67108864 },
+        "first_seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/positiveDecimal" },
+            { "type": "null" }
+          ]
+        },
+        "last_seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/decimal" },
+            { "type": "null" }
+          ]
+        },
+        "coverage": { "$ref": "#/$defs/coverage" },
+        "budget": { "$ref": "#/$defs/followBudget" },
+        "outcome": { "enum": ["completed", "partial", "stopped"] },
+        "stop_reason": {
+          "enum": [
+            "deadline",
+            "cycle_limit",
+            "record_limit",
+            "byte_limit",
+            "failure_limit",
+            "interrupted",
+            "rate_limited",
+            "cache_error",
+            "protocol_error",
+            "capability_error"
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "outcome": { "const": "completed" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "stop_reason": { "enum": ["deadline", "cycle_limit", "record_limit", "byte_limit"] }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "partial" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "record_count": { "minimum": 1 },
+              "stop_reason": {
+                "enum": ["failure_limit", "interrupted", "rate_limited", "cache_error", "protocol_error", "capability_error"]
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "const": "stopped" } },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "record_count": { "const": 0 },
+              "stop_reason": {
+                "enum": ["failure_limit", "interrupted", "rate_limited", "cache_error", "protocol_error", "capability_error"]
+              }
+            }
+          }
+        }
+      ]
+    },
+    "localSearch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "scope", "query", "room_filter", "limit", "results"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-local-search" },
+        "scope": { "const": "retained_observations" },
+        "query": { "type": "string", "maxLength": 1024 },
+        "room_filter": {
+          "oneOf": [
+            { "$ref": "#/$defs/room" },
+            { "type": "null" }
+          ]
+        },
+        "limit": { "type": "integer", "minimum": 1, "maximum": 200 },
+        "results": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/searchResult" }
+        }
+      }
+    },
+    "cacheStatus": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "cache_schema_version",
+        "message_count",
+        "max_messages",
+        "retention_days",
+        "database_bytes",
+        "max_database_bytes",
+        "total_room_count",
+        "emitted_room_count",
+        "rooms_truncated",
+        "rooms"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-cache-status" },
+        "cache_schema_version": { "const": 1 },
+        "message_count": { "type": "integer", "minimum": 0, "maximum": 50000 },
+        "max_messages": { "type": "integer", "minimum": 1, "maximum": 50000 },
+        "retention_days": { "type": "integer", "minimum": 1, "maximum": 365 },
+        "database_bytes": { "type": "integer", "minimum": 0 },
+        "max_database_bytes": { "const": 67108864 },
+        "total_room_count": { "type": "integer", "minimum": 0, "maximum": 50000 },
+        "emitted_room_count": { "type": "integer", "minimum": 0, "maximum": 200 },
+        "rooms_truncated": { "type": "boolean" },
+        "rooms": {
+          "type": "array",
+          "maxItems": 200,
+          "items": { "$ref": "#/$defs/cacheRoom" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "rooms_truncated": { "const": true } },
+            "required": ["rooms_truncated"]
+          },
+          "then": {
+            "properties": {
+              "total_room_count": { "minimum": 201 },
+              "emitted_room_count": { "const": 200 },
+              "rooms": { "minItems": 200, "maxItems": 200 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "rooms_truncated": { "const": false } },
+            "required": ["rooms_truncated"]
+          },
+          "then": { "properties": { "total_room_count": { "maximum": 200 } } }
+        }
+      ]
+    },
+    "cachePrune": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "before_count",
+        "after_count",
+        "pruned_count",
+        "remaining_over_limit",
+        "transactions_committed",
+        "outcome"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-cache-prune" },
+        "before_count": { "type": "integer", "minimum": 0 },
+        "after_count": { "type": "integer", "minimum": 0 },
+        "pruned_count": { "type": "integer", "minimum": 0 },
+        "remaining_over_limit": { "type": "boolean" },
+        "transactions_committed": { "type": "integer", "minimum": 0 },
+        "outcome": { "enum": ["complete", "partial", "noop"] }
+      }
+    },
+    "messageDraft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "room", "created_at", "draft_sha256"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-message-draft" },
+        "room": { "$ref": "#/$defs/room" },
+        "created_at": { "$ref": "#/$defs/utcTimestamp" },
+        "draft_sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "messagePlan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "room", "text", "draft_sha256", "submit_required", "live_submit_enabled"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-message-plan" },
+        "room": { "$ref": "#/$defs/room" },
+        "text": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "draft_sha256": { "$ref": "#/$defs/sha256" },
+        "submit_required": { "const": true },
+        "live_submit_enabled": { "type": "boolean" }
+      }
+    },
+    "messageResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "outcome",
+        "verified",
+        "did",
+        "room",
+        "seq",
+        "timestamp",
+        "nonce",
+        "draft_sha256",
+        "event_status",
+        "retry_post"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-message-result" },
+        "outcome": {
+          "enum": [
+            "verified",
+            "not_posted",
+            "post_outcome_uncertain",
+            "remote_verified_local_commit_failed",
+            "local_committed_pending_cleanup_failed",
+            "canceled_before_attempt"
+          ]
+        },
+        "verified": { "type": "boolean" },
+        "did": { "type": "string", "pattern": "^did:key:z6Mk[1-9A-HJ-NP-Za-km-z]{44}$" },
+        "room": { "$ref": "#/$defs/room" },
+        "seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/positiveDecimal" },
+            { "type": "null" }
+          ]
+        },
+        "timestamp": { "type": ["string", "null"] },
+        "nonce": { "$ref": "#/$defs/nonce" },
+        "draft_sha256": { "$ref": "#/$defs/sha256" },
+        "event_status": { "$ref": "#/$defs/eventStatus" },
+        "retry_post": { "const": false }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": ["verified", "remote_verified_local_commit_failed", "local_committed_pending_cleanup_failed"]
+              }
+            },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "verified": { "const": true },
+              "seq": { "$ref": "#/$defs/positiveDecimal" },
+              "timestamp": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "outcome": { "enum": ["not_posted", "post_outcome_uncertain", "canceled_before_attempt"] }
+            },
+            "required": ["outcome"]
+          },
+          "then": {
+            "properties": {
+              "verified": { "const": false },
+              "seq": { "type": "null" },
+              "timestamp": { "type": "null" }
+            }
+          }
+        }
+      ]
+    },
+    "reconcileResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "kind", "outcome", "invocation_id", "room", "remote_seq", "event_status", "retry_post"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-reconcile-result" },
+        "outcome": {
+          "enum": [
+            "not_posted",
+            "post_outcome_uncertain",
+            "verified",
+            "remote_verified_local_commit_failed",
+            "local_committed_pending_cleanup_failed"
+          ]
+        },
+        "invocation_id": { "$ref": "#/$defs/uuid" },
+        "room": { "$ref": "#/$defs/room" },
+        "remote_seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/positiveDecimal" },
+            { "type": "null" }
+          ]
+        },
+        "event_status": { "$ref": "#/$defs/eventStatus" },
+        "retry_post": { "const": false }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": ["verified", "remote_verified_local_commit_failed", "local_committed_pending_cleanup_failed"]
+              }
+            },
+            "required": ["outcome"]
+          },
+          "then": { "properties": { "remote_seq": { "$ref": "#/$defs/positiveDecimal" } } }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "enum": ["not_posted", "post_outcome_uncertain"] } },
+            "required": ["outcome"]
+          },
+          "then": { "properties": { "remote_seq": { "type": "null" } } }
+        }
+      ]
+    },
+    "operationOutcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "kind",
+        "outcome",
+        "invocation_id",
+        "room",
+        "draft_sha256",
+        "remote_seq",
+        "error_code",
+        "event_status",
+        "retry_post"
+      ],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "kind": { "const": "technocore-operation-outcome" },
+        "outcome": {
+          "enum": [
+            "not_posted",
+            "post_outcome_uncertain",
+            "remote_verified_local_commit_failed",
+            "local_committed_pending_cleanup_failed"
+          ]
+        },
+        "invocation_id": { "$ref": "#/$defs/uuid" },
+        "room": {
+          "oneOf": [
+            { "$ref": "#/$defs/room" },
+            { "type": "null" }
+          ]
+        },
+        "draft_sha256": {
+          "oneOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "remote_seq": {
+          "oneOf": [
+            { "$ref": "#/$defs/positiveDecimal" },
+            { "type": "null" }
+          ]
+        },
+        "error_code": {
+          "oneOf": [
+            { "$ref": "#/$defs/errorCode" },
+            { "type": "null" }
+          ]
+        },
+        "event_status": { "$ref": "#/$defs/eventStatus" },
+        "retry_post": { "const": false }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "outcome": {
+                "enum": ["remote_verified_local_commit_failed", "local_committed_pending_cleanup_failed"]
+              }
+            },
+            "required": ["outcome"]
+          },
+          "then": { "properties": { "remote_seq": { "$ref": "#/$defs/positiveDecimal" } } }
+        },
+        {
+          "if": {
+            "properties": { "outcome": { "enum": ["not_posted", "post_outcome_uncertain"] } },
+            "required": ["outcome"]
+          },
+          "then": { "properties": { "remote_seq": { "type": "null" } } }
+        }
+      ]
+    }
+  }
+}
