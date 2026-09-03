@@ -93,6 +93,19 @@
             "choices": null,
             "const": null,
             "default": null,
+            "dest": "tclk-check",
+            "help": "GET and summarize tclk/1 room frames without acting on them",
+            "metavar": "tclk-check",
+            "nargs": null,
+            "option_strings": [],
+            "required": false,
+            "type": null
+          },
+          {
+            "action_class": "subparser_choice",
+            "choices": null,
+            "const": null,
+            "default": null,
             "dest": "summarize-report",
             "help": "validate a monitor report from stdin and emit a safe summary",
             "metavar": "summarize-report",
@@ -148,6 +161,10 @@
           {
             "help": "GET and emit a content-free room safety summary",
             "name": "agent-check"
+          },
+          {
+            "help": "GET and summarize tclk/1 room frames without acting on them",
+            "name": "tclk-check"
           },
           {
             "help": "validate a monitor report from stdin and emit a safe summary",
@@ -1063,6 +1080,146 @@
       "parser_class": "argument_parser",
       "prefix_chars": "-",
       "prog": "technocore-sentinel agent-check",
+      "usage": null
+    }
+  },
+  {
+    "actions": [
+      {
+        "action_class": "help",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": {
+          "kind": "argparse.SUPPRESS"
+        },
+        "dest": "help",
+        "help": "show this help message and exit",
+        "metavar": null,
+        "nargs": 0,
+        "option_strings": [
+          "-h",
+          "--help"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "tclk-offers",
+        "dest": "room",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--room"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": null,
+        "const": null,
+        "default": "state/monitor.json",
+        "dest": "state_file",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--state-file"
+        ],
+        "required": false,
+        "type": null
+      },
+      {
+        "action_class": "store",
+        "choice_help_actions": null,
+        "choices": [
+          "text",
+          "json"
+        ],
+        "const": null,
+        "default": "json",
+        "dest": "format",
+        "help": null,
+        "metavar": null,
+        "nargs": null,
+        "option_strings": [
+          "--format"
+        ],
+        "required": false,
+        "type": null
+      }
+    ],
+    "argument_groups": [
+      {
+        "action_indexes": [],
+        "description": null,
+        "title": "positional arguments"
+      },
+      {
+        "action_indexes": [
+          0,
+          1,
+          2,
+          3
+        ],
+        "description": null,
+        "title": "options"
+      }
+    ],
+    "classification": "compatibility",
+    "command": [
+      "tclk-check"
+    ],
+    "mutually_exclusive_groups": [],
+    "option_string_routes": [
+      {
+        "action_index": 3,
+        "option_string": "--format"
+      },
+      {
+        "action_index": 0,
+        "option_string": "--help"
+      },
+      {
+        "action_index": 1,
+        "option_string": "--room"
+      },
+      {
+        "action_index": 2,
+        "option_string": "--state-file"
+      },
+      {
+        "action_index": 0,
+        "option_string": "-h"
+      }
+    ],
+    "parser": {
+      "add_help": true,
+      "allow_abbrev": true,
+      "argument_default": null,
+      "conflict_handler": "error",
+      "defaults": {},
+      "description": null,
+      "epilog": null,
+      "exit_on_error": true,
+      "formatter_class": "help",
+      "fromfile_prefix_chars": null,
+      "has_negative_number_optionals": [],
+      "instance_method_overrides": [],
+      "negative_number_matcher": {
+        "flags": 32,
+        "pattern": "^-\\d+$|^-\\d*\\.\\d+$"
+      },
+      "parser_class": "argument_parser",
+      "prefix_chars": "-",
+      "prog": "technocore-sentinel tclk-check",
       "usage": null
     }
   },
