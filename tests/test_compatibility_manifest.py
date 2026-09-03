@@ -40,12 +40,11 @@ RELEASE_CLASSES = frozenset(
 )
 FROZEN_RELEASE_CLASS_COUNT = 48
 FROZEN_RELEASE_CLASS_COUNTS = {
-    "excluded-material": 1,
     "historical-plan": 1,
-    "intended-release-input": 38,
+    "intended-release-input": 39,
     "separately-reviewed-workflow": 8,
 }
-FROZEN_RELEASE_CLASS_SHA256 = "e2c1f4e14bcc9c9d1c3f3708efafad7878212728d60bea3aa6aa9ada356a3eaf"
+FROZEN_RELEASE_CLASS_SHA256 = "cdb29f010dbc706948c264fdfe43914c4893c385a73f465cd618025fb1936af4"
 MONITOR_STATE_FIXTURES = (
     (
         "monitor_state_first.json",

@@ -2773,6 +2773,18 @@ class TclkCheckCLITests(unittest.TestCase):
             self.calls.append((room, limit, since))
             return self.response  # type: ignore[return-value]
 
+    class SequenceClient:
+        def __init__(self, responses: list[object]) -> None:
+            self.responses = iter(responses)
+            self.calls: list[tuple[str, int, int | None]] = []
+
+        def get_room(self, room: str, *, limit: int, since: int | None = None) -> dict[str, object]:
+            self.calls.append((room, limit, since))
+            response = next(self.responses)
+            if isinstance(response, Exception):
+                raise response
+            return response  # type: ignore[return-value]
+
     def test_tclk_check_json_is_read_only_content_free_and_advances_cursor(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -2838,6 +2850,225 @@ class TclkCheckCLITests(unittest.TestCase):
             self.assertIn("wallet actions", text)
             self.assertIn("public writes", text)
             self.assertEqual(json.loads(state.read_text())["rooms"]["tclk-offers"], 10)
+
+    def test_tclk_check_empty_incremental_equal_head_is_healthy_idle_with_two_gets(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "tclk.json"
+            original = b'{"rooms":{"tclk-offers":9},"version":1}\n'
+            state.write_bytes(original)
+            state.chmod(0o600)
+            client = self.SequenceClient([
+                self.payload(),
+                self.payload({"seq": 9, "from": "old", "text": "old"}),
+            ])
+            output = StringIO()
+
+            result = run(
+                ["tclk-check", "--state-file", str(state)],
+                client_factory=lambda: client,  # type: ignore[arg-type]
+                stdout=output,
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(client.calls, [
+                ("tclk-offers", 200, 9),
+                ("tclk-offers", 200, None),
+            ])
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["previous_seq"], 9)
+            self.assertEqual(report["next_seq"], 9)
+            self.assertEqual(report["new_message_count"], 0)
+            self.assertFalse(report["review_required"])
+            self.assertNotIn("cursor_status", report)
+            self.assertNotIn("cursor_recovered", report)
+            self.assertEqual(state.read_bytes(), original)
+
+    def test_tclk_check_empty_incremental_recovers_to_lower_head_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "tclk.json"
+            state.write_text('{"rooms":{"tclk-offers":9},"version":1}\n')
+            state.chmod(0o600)
+            client = self.SequenceClient([
+                self.payload(),
+                self.payload(
+                    {"seq": 1, "from": "anon", "text": self.frame("offer")},
+                    {"seq": 4, "from": "anon", "text": "not tclk"},
+                ),
+            ])
+            output = StringIO()
+
+            result = run(
+                ["tclk-check", "--state-file", str(state)],
+                client_factory=lambda: client,  # type: ignore[arg-type]
+                stdout=output,
+            )
+
+            self.assertEqual(result, 0)
+            self.assertEqual(client.calls, [
+                ("tclk-offers", 200, 9),
+                ("tclk-offers", 200, None),
+            ])
+            report = json.loads(output.getvalue())
+            self.assertEqual(report["previous_seq"], 0)
+            self.assertEqual(report["next_seq"], 4)
+            self.assertEqual(report["new_message_count"], 2)
+            self.assertEqual(report["tclk_frame_count"], 1)
+            self.assertTrue(report["coverage_gap"])
+            self.assertEqual(report["missing_sequence_count"], 2)
+            self.assertTrue(report["review_required"])
+            self.assertNotIn("cursor_status", report)
+            self.assertEqual(json.loads(state.read_text())["rooms"]["tclk-offers"], 4)
+
+    def test_tclk_check_empty_incremental_newer_head_fails_without_output_or_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "tclk.json"
+            original = b'{"rooms":{"tclk-offers":9},"version":1}\n'
+            state.write_bytes(original)
+            state.chmod(0o600)
+            client = self.SequenceClient([
+                self.payload(),
+                self.payload({"seq": 10, "from": "anon", "text": self.frame("receipt")}),
+            ])
+            output = StringIO()
+
+            with self.assertRaises(RuntimeError):
+                run(
+                    ["tclk-check", "--state-file", str(state)],
+                    client_factory=lambda: client,  # type: ignore[arg-type]
+                    stdout=output,
+                )
+
+            self.assertEqual(client.calls, [
+                ("tclk-offers", 200, 9),
+                ("tclk-offers", 200, None),
+            ])
+            self.assertEqual(output.getvalue(), "")
+            self.assertEqual(state.read_bytes(), original)
+
+    def test_tclk_check_recovered_cursor_observes_recreated_room_activity_next_cycle(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = root / "tclk.json"
+            state.write_text('{"rooms":{"tclk-offers":9},"version":1}\n')
+            state.chmod(0o600)
+            client = self.SequenceClient([
+                self.payload(),
+                self.payload({"seq": 2, "from": "anon", "text": "not tclk"}),
+                self.payload({"seq": 3, "from": "anon", "text": self.frame("lock")}),
+            ])
+
+            first_output = StringIO()
+            self.assertEqual(run(
+                ["tclk-check", "--state-file", str(state)],
+                client_factory=lambda: client,  # type: ignore[arg-type]
+                stdout=first_output,
+            ), 0)
+            second_output = StringIO()
+            self.assertEqual(run(
+                ["tclk-check", "--state-file", str(state)],
+                client_factory=lambda: client,  # type: ignore[arg-type]
+                stdout=second_output,
+            ), 0)
+
+            self.assertEqual(client.calls, [
+                ("tclk-offers", 200, 9),
+                ("tclk-offers", 200, None),
+                ("tclk-offers", 200, 2),
+            ])
+            second_report = json.loads(second_output.getvalue())
+            self.assertEqual(second_report["previous_seq"], 2)
+            self.assertEqual(second_report["next_seq"], 3)
+            self.assertEqual(second_report["tclk_frame_count"], 1)
+            self.assertEqual(second_report["frame_type_counts"]["lock"], 1)
+            self.assertEqual(json.loads(state.read_text())["rooms"]["tclk-offers"], 3)
+
+    def test_tclk_check_malformed_incremental_or_head_report_cursor_fails_before_commit(self) -> None:
+        for malformed_head in (False, True):
+            with self.subTest(malformed_head=malformed_head), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                state = root / "tclk.json"
+                original = b'{"rooms":{"tclk-offers":9},"version":1}\n'
+                state.write_bytes(original)
+                state.chmod(0o600)
+                responses: list[object] = [self.payload()]
+                if malformed_head:
+                    responses.append(self.payload({"seq": 4, "from": "anon", "text": "old"}))
+                client = self.SequenceClient(responses)
+                output = StringIO()
+                real_summarize = cli_module.summarize_tclk_room_payload
+
+                def malformed_report(payload: object, previous_seq: int) -> dict[str, object]:
+                    report = real_summarize(payload, previous_seq)
+                    if (previous_seq == 0) == malformed_head:
+                        report["next_seq"] = "invalid"
+                    return report
+
+                with (
+                    mock.patch("technocore_sentinel.cli.summarize_tclk_room_payload", side_effect=malformed_report),
+                    self.assertRaises(ValueError),
+                ):
+                    run(
+                        ["tclk-check", "--state-file", str(state)],
+                        client_factory=lambda: client,  # type: ignore[arg-type]
+                        stdout=output,
+                    )
+
+                self.assertEqual(output.getvalue(), "")
+                self.assertEqual(state.read_bytes(), original)
+
+    def test_tclk_check_rejects_hostile_or_inconsistent_reports_on_both_paths(self) -> None:
+        hostile = "https://hostile.invalid/secret?token=DO_NOT_ECHO"
+        for malformed_head in (False, True):
+            for defect in ("unknown", "aggregate"):
+                with (
+                    self.subTest(malformed_head=malformed_head, defect=defect),
+                    tempfile.TemporaryDirectory() as temporary,
+                ):
+                    root = Path(temporary)
+                    state = root / "tclk.json"
+                    original = b'{"rooms":{"tclk-offers":9},"version":1}\n'
+                    state.write_bytes(original)
+                    state.chmod(0o600)
+                    incremental = self.payload() if malformed_head else self.payload(
+                        {"seq": 10, "from": "anon", "text": self.frame("offer")},
+                    )
+                    responses: list[object] = [incremental]
+                    if malformed_head:
+                        responses.append(self.payload(
+                            {"seq": 4, "from": "anon", "text": self.frame("offer")},
+                        ))
+                    client = self.SequenceClient(responses)
+                    output = StringIO()
+                    real_summarize = cli_module.summarize_tclk_room_payload
+
+                    def defective_report(payload: object, previous_seq: int) -> dict[str, object]:
+                        report = real_summarize(payload, previous_seq)
+                        if (previous_seq == 0) == malformed_head:
+                            if defect == "unknown":
+                                report["secret"] = hostile
+                            else:
+                                report["valid_frame_count"] = 0
+                        return report
+
+                    with (
+                        mock.patch(
+                            "technocore_sentinel.cli.summarize_tclk_room_payload",
+                            side_effect=defective_report,
+                        ),
+                        self.assertRaisesRegex(ValueError, "^invalid tclk report$") as raised,
+                    ):
+                        run(
+                            ["tclk-check", "--state-file", str(state)],
+                            client_factory=lambda: client,  # type: ignore[arg-type]
+                            stdout=output,
+                        )
+
+                    self.assertNotIn(hostile, str(raised.exception))
+                    self.assertEqual(output.getvalue(), "")
+                    self.assertEqual(state.read_bytes(), original)
 
 
 if __name__ == "__main__":

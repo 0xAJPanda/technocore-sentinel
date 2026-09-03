@@ -21,7 +21,7 @@ Each machine-readable line is an exact repository-relative POSIX path, one TAB, 
 
 <!-- BEGIN RELEASE INPUT CLASSES -->
 ```text
-.github/workflows/ci.yml	excluded-material
+.github/workflows/ci.yml	intended-release-input
 README.md	intended-release-input
 SECURITY.md	intended-release-input
 docs/plans/2026-08-28-agent-workflow-integration-layer.md	separately-reviewed-workflow

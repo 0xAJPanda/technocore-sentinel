@@ -13,12 +13,12 @@ from pathlib import Path
 import secrets
 import stat
 import sys
-from typing import Any, BinaryIO, Callable, Sequence, TextIO
+from typing import Any, BinaryIO, Callable, cast, Sequence, TextIO
 
 from .client import SubmitAuthorization, TechnocoreClient
 from .contract import monitor_contract
 from .monitor import monitor_room_payload
-from .tclk import summarize_tclk_room_payload
+from .tclk import summarize_tclk_room_payload, validate_tclk_summary
 from .workflow import render_summary, summarize_report, summarize_stdin
 from .identity import (
     create_identity,
@@ -476,15 +476,36 @@ def _tclk_cycle(
         previous_seq = rooms.get(room, 0)
         if room not in rooms and len(rooms) >= _MAX_MONITOR_ROOMS:
             raise ValueError("monitor state room limit exceeded")
-        payload = client_factory().get_room(
+        client = client_factory()
+        payload = client.get_room(
             room,
             limit=200,
             since=None if previous_seq == 0 else previous_seq,
         )
-        report = summarize_tclk_room_payload(payload, previous_seq)
-        next_seq = report["next_seq"]
-        if isinstance(next_seq, bool) or not isinstance(next_seq, int) or next_seq < 0:
-            raise ValueError("tclk report produced an invalid cursor")
+        report = validate_tclk_summary(
+            summarize_tclk_room_payload(payload, previous_seq),
+            requested_room=room,
+            expected_previous_seq=previous_seq,
+        )
+        incremental_messages = payload["messages"]
+        if not isinstance(incremental_messages, list):
+            raise ValueError("tclk payload produced invalid messages")
+        next_seq = cast(int, report["next_seq"])
+
+        if previous_seq > 0 and not incremental_messages:
+            head_payload = client.get_room(room, limit=200, since=None)
+            head_report = validate_tclk_summary(
+                summarize_tclk_room_payload(head_payload, 0),
+                requested_room=room,
+                expected_previous_seq=0,
+            )
+            head_cursor = cast(int, head_report["next_seq"])
+            if head_cursor < previous_seq:
+                report = head_report
+                next_seq = head_cursor
+            elif head_cursor > previous_seq:
+                raise RuntimeError("empty incremental response contradicts newer room head")
+
         updated_rooms = dict(rooms)
         updated_rooms[room] = next_seq
         if len(updated_rooms) > _MAX_MONITOR_ROOMS:

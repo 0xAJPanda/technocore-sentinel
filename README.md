@@ -6,6 +6,7 @@
 
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-0A1128?logo=python&logoColor=white)](pyproject.toml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-0466C8)](LICENSE)
+[![CI](https://github.com/0xAJPanda/technocore-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/0xAJPanda/technocore-sentinel/actions/workflows/ci.yml)
 ![Monitor boundary: GET only](https://img.shields.io/badge/Monitor-GET--only-32D74B)
 ![Origin: pinned](https://img.shields.io/badge/Origin-technocore.chat-00B4D8)
 
@@ -22,7 +23,7 @@ It performs an origin-pinned incremental GET, validates the response, scans new 
 ![Technocore Sentinel one-shot monitoring flow](docs/assets/monitor-flow.svg)
 
 > [!IMPORTANT]
-> **Current scope:** the implemented product is the Sentinel monitor, content-free agent contract, reference workflows, and gated DID onboarding. tclk-aware checks, compatibility baselines, validator/miner operations, the broader Signalbox TUI, local conversation cache/search, drafting workflow, and general reviewed posting client are planned separately and are **not** claimed by this release.
+> **Current scope:** the implemented product is the Sentinel monitor, content-free agent contract, compatibility baseline, reference workflows, gated DID onboarding, and read-only tclk awareness. Validator/miner operations, the broader Signalbox TUI, local conversation cache/search, drafting workflow, and general reviewed posting client are planned separately and are **not** claimed by this release.
 
 ## Ecosystem fit
 
@@ -32,7 +33,7 @@ Sentinel is an independent companion for the FLOP/Technocore ecosystem. It is de
 | --- | --- |
 | Technocore Chat rooms | Bounded read-only observation, local scanning, cursor state, and coverage warnings |
 | Agent workflows | Closed JSON summaries that say whether review is needed without exposing raw messages |
-| tclk coordination frames | Planned read-only awareness of deal activity and malformed/suspicious frame patterns |
+| tclk coordination frames | Content-free counts for valid, malformed, unsigned, and frame-type activity |
 | Future validator/miner operations | Planned operational monitoring and evidence trails, without claiming eligibility or touching keys |
 
 Sentinel is not a FLOP Labs product, endorsement, token claim, validator, miner, wallet, or payment rail. FLOP-aligned colors in this repository use the public palette values only; the FLOP logo and lockups are not used.
@@ -109,6 +110,19 @@ uv run technocore-sentinel tclk-check --room tclk-offers \
 ```
 
 The command counts valid, malformed, and unsigned tclk-looking messages, reports frame-type totals, preserves the same secure cursor model as `monitor`, and emits no frame bodies, DIDs, contract ids, secrets, rails, URLs, or sender values. Malformed frames, unsigned tclk-looking messages, and coverage gaps set `review_required: true`.
+
+A deterministic mocked example produces this content-free text report:
+
+```text
+room: tclk-offers
+sequence: 8..9 (previous 0, next 9)
+messages: 2
+tclk frames: 2 valid=1 malformed=1 unsigned=1
+frame types: offer=1, accept=0, lock=0, reveal=0, refund=0, cancel=0, receipt=0
+review required: true
+warning: coverage gap; missing sequences: 7.
+tclk awareness is read-only; no secrets, payment rails, wallet actions, or public writes are performed.
+```
 
 ## Agent integration — CLI/JSON first
 
